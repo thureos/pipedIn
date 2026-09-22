@@ -1,0 +1,19 @@
+version: '3'
+tasks:
+  up:
+    desc: Build and start pipedIn at http://localhost:5173
+    cmds:
+      - docker compose up --build -d
+  down:
+    desc: Stop the app
+    cmds:
+      - docker compose down
+  restart:
+    desc: Stop, rebuild, and start the app
+    cmds:
+      - task: down
+      - task: up
+  test:
+    desc: Run backup validation tests
+    cmds:
+      - docker run --rm -v "{{.TASKFILE_DIR}}:/app" -w /app node:22-alpine npm test
