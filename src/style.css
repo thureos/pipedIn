@@ -48,3 +48,32 @@
 [data-theme=dark] .star-toggle.is-starred,[data-theme=dark] .list-star{color:#f2cc4d}
 .list-star{display:inline-block;vertical-align:-2px;margin-right:6px}
 .form-grid .card-preferences{padding:10px;border:1px solid var(--border);border-radius:6px}
+
+/* Board display preferences keep the data model independent from presentation. */
+.view-toggle{display:flex;align-items:center;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--surface)}
+.view-toggle button{padding:7px 9px;font-size:10px;color:var(--muted)}
+.view-toggle button.active{background:var(--selected);color:var(--selected-text);font-weight:600}
+.column-actions{display:flex;align-items:center;gap:2px}
+.condensed-card-main{display:none}
+.column.condensed .application-card{min-height:56px}
+.column.condensed .application-card>*:not(.condensed-card-main){display:none}
+.column.condensed .application-card .condensed-card-main{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;width:100%;min-height:56px;padding:10px 12px;text-align:left}
+.column.condensed .condensed-card-main::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--card-line,var(--accent));flex-shrink:0}
+.condensed-card-name{font-size:11px;font-weight:700;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.condensed-card-position{font-size:9px;color:var(--muted);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.column.minimized{display:flex;flex:0 0 62px;flex-direction:column;min-width:62px;max-width:62px}
+.minimized-column-letter{display:none}
+.column.minimized .column-heading{display:flex;flex:0 0 auto;flex-direction:column;justify-content:flex-start;gap:6px;padding:8px 6px;background:var(--column);position:relative;z-index:2}
+.column.minimized .column-heading>div:first-child{flex-direction:column;gap:5px;text-align:center}
+.column.minimized .column-heading h2{display:none}
+.column.minimized .minimized-column-letter{display:block;font-size:15px;font-weight:700;line-height:1}
+.column.minimized .column-actions{flex-direction:column}
+.column.minimized .column-actions .icon-button{display:inline-flex;position:relative;z-index:3}
+.column.minimized .stage-age,.column.minimized .column-line,.column.minimized .add-card{display:none}
+.column.minimized .cards{display:flex;flex:1;justify-content:flex-end;min-height:0;position:relative;z-index:1;gap:8px;margin-top:12px}
+.column.minimized .application-card{width:42px;height:42px;min-height:42px;padding:0;border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:5px;margin-inline:auto;overflow:hidden}
+.column.minimized .application-card>*:not(.condensed-card-main){display:none}
+.column.minimized .application-card .condensed-card-main{display:grid;place-items:center;width:100%;height:100%;min-height:0;padding:0;background:var(--card-tint,#fff);color:var(--accent)}
+.column.minimized .condensed-card-name,.column.minimized .condensed-card-position{display:none}
+.minimized-card-letter{display:none}
+.column.minimized .minimized-card-letter{display:block;font-size:15px;font-weight:700;line-height:1}

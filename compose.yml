@@ -1,6 +1,14 @@
 services:
   app:
-    build: .
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     ports:
-      - "5173:80"
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - pipedin_node_modules:/app/node_modules
     restart: unless-stopped
+
+volumes:
+  pipedin_node_modules:

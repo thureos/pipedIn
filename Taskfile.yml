@@ -1,9 +1,9 @@
 version: '3'
 tasks:
   up:
-    desc: Build and start pipedIn at http://localhost:5173
+    desc: Start the live pipedIn dev server at http://localhost:5173
     cmds:
-      - docker compose up --build -d
+      - docker compose up -d
   down:
     desc: Stop the app
     cmds:
