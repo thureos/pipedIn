@@ -1,4 +1,6 @@
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+import { googleClientId } from './config.js'
+
+const clientId = () => googleClientId()
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
 const BACKUP_NAME = 'pipedIn-backup.json'
 const TOKEN_KEY = 'pipedin.google.token'
@@ -22,7 +24,7 @@ function loadIdentityScript() {
 }
 
 function requireClientId() {
-  if (!CLIENT_ID) throw new Error('Google Drive is not configured. Add VITE_GOOGLE_CLIENT_ID to the app environment.')
+  if (!clientId()) throw new Error('Google Drive is not configured. Add VITE_GOOGLE_CLIENT_ID to the app environment.')
 }
 
 async function getToken() {
@@ -30,7 +32,7 @@ async function getToken() {
   await loadIdentityScript()
   if (!tokenClient) {
     tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
+      client_id: clientId(),
       scope: DRIVE_SCOPE,
       callback: () => {}
     })
@@ -103,6 +105,6 @@ export async function restoreFromGoogleDrive() {
   return backup
 }
 
-export function googleDriveConfigured() { return Boolean(CLIENT_ID) }
+export function googleDriveConfigured() { return Boolean(clientId()) }
 export function googleDriveConnected() { return Boolean(localStorage.getItem(TOKEN_KEY)) }
 export function disconnectGoogleDrive() { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(FILE_KEY) }
