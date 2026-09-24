@@ -35,11 +35,16 @@ npm run dev
 - Search and work arrangement filters, application list, and interview list.
 - Light and dark themes, responsive layout, keyboard-accessible dialogs, and storage error feedback.
 - JSON export and validated restore in Settings & data. Restore replaces the existing dataset after confirmation.
+- Optional Google Drive backup and restore, using an app-private Drive file when configured with a Google OAuth client ID.
 - Optional fictional sample pipeline, available only when the workspace is empty. Delete all applications in Settings to clear it.
 
 ## Storage and metrics
 
 Applications use `pipedin.applications.v1`; appearance uses `pipedin.theme`. Data is specific to the browser profile and origin (protocol, hostname, and port). Docker restarts do not remove browser data. Clearing site data does; export backups regularly. Private browsing may clear data when the session ends. No cross-device synchronization is provided.
+
+## Google Drive setup
+
+Google Drive backup is optional. Create a Google Cloud project, enable the Google Drive API, configure the OAuth consent screen, and create a Web application OAuth client. Add the app's local and production origins to the client's Authorized JavaScript origins, then set `VITE_GOOGLE_CLIENT_ID` in the deployment environment using `.env.example` as a template. The app requests the restricted `drive.appdata` scope and stores the backup in Drive's app-private data area. The app never receives the user's Google password and does not send application data to a pipedIn server.
 
 Active applications are Applied, Reached out, Interviews, or Offer received. Offers counts current Offer received and Offer accepted applications. Response rate is the share currently in Reached out, Interviews, Offer received, Offer accepted, Offer declined, or Rejected; Withdrawn and Applied are excluded from the numerator. These metrics describe current stages, not historical transitions.
 
