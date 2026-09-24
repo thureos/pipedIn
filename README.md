@@ -44,7 +44,7 @@ Applications use `pipedin.applications.v1`; appearance uses `pipedin.theme`. Dat
 
 ## Google Drive setup
 
-Google Drive backup is optional. Create a Google Cloud project, enable the Google Drive API, configure the OAuth consent screen, and create a Web application OAuth client. Add the app's local and production origins to the client's Authorized JavaScript origins, then set `VITE_GOOGLE_CLIENT_ID` in the deployment environment using `.env.example` as a template. The app requests the restricted `drive.appdata` scope and stores the backup in Drive's app-private data area. The app never receives the user's Google password and does not send application data to a pipedIn server.
+Google Drive backup is optional. Create a Google Cloud project, enable the Google Drive API, configure the OAuth consent screen, and create a Web application OAuth client. Add the app's local and production origins to the client's Authorized JavaScript origins, then set `VITE_GOOGLE_CLIENT_ID` either in a local `.env` file or in the environment that starts/builds Vite. An environment variable takes precedence over the `.env` value. The app requests the restricted `drive.appdata` scope and stores the backup in Drive's app-private data area. The app never receives the user's Google password and does not send application data to a pipedIn server.
 
 Active applications are Applied, Reached out, Interviews, or Offer received. Offers counts current Offer received and Offer accepted applications. Response rate is the share currently in Reached out, Interviews, Offer received, Offer accepted, Offer declined, or Rejected; Withdrawn and Applied are excluded from the numerator. These metrics describe current stages, not historical transitions.
 

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { loadEnv } from 'vite'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
@@ -22,4 +23,11 @@ function policyRoutes() {
 	}
 }
 
-export default defineConfig({ plugins: [policyRoutes(), vue(), tailwindcss()], server: { watch: { usePolling: true } } })
+export default defineConfig(({ mode }) => {
+	const env = loadEnv(mode, process.cwd(), '')
+	return {
+		plugins: [policyRoutes(), vue(), tailwindcss()],
+		define: { 'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(env.VITE_GOOGLE_CLIENT_ID || '') },
+		server: { watch: { usePolling: true } }
+	}
+})
