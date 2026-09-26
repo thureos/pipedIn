@@ -1,0 +1,110 @@
+.salary-range-inputs {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.salary-range-inputs > label {
+  min-width: 0;
+}
+.salary-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0 9px;
+  background: var(--input);
+  color: var(--muted);
+}
+.dialog .salary-input input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 9px 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+}
+.salary-error {
+  grid-column: 1 / -1;
+  color: #b9485d;
+  font-size: 10px;
+}
+.dialog-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.share-menu {
+  position: relative;
+}
+.share-menu summary {
+  display: inline-flex;
+  list-style: none;
+  cursor: pointer;
+}
+.share-menu summary::-webkit-details-marker {
+  display: none;
+}
+.share-menu[open] summary {
+  background: var(--hover);
+}
+.share-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  min-width: 150px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(30, 20, 45, 0.14);
+}
+.share-menu-panel button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 4px;
+  text-align: left;
+  font-size: 10px;
+}
+.share-menu-panel button:hover {
+  background: var(--hover);
+}
+.receive-note {
+  color: var(--muted);
+  font-size: 9px;
+}
+.application-meta {
+  margin: 0 12px 10px;
+}
+.receive-dialog {
+  width: min(520px, 100%);
+}
+.receive-body {
+  display: grid;
+  gap: 10px;
+}
+.receive-body label {
+  display: grid;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.receive-body textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 10px;
+  background: var(--input);
+  color: var(--text);
+  font-size: 11px;
+}

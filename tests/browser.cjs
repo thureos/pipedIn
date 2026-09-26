@@ -3,18 +3,25 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || '/tmp/node_modules/p
 const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 ;(async () => {
-  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', args: ['--no-sandbox'] })
+  const browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
+    args: ['--no-sandbox'],
+  })
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
   const errors = []
-  page.on('pageerror', error => errors.push(error.message))
+  page.on('pageerror', (error) => errors.push(error.message))
   await page.goto(process.env.APP_URL || 'http://localhost:5173')
-  await page.getByRole('button', { name: 'Add application to Potential applications', exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Add application to Potential applications', exact: true })
+    .click()
   await page.getByLabel('Opportunity name').fill('Potential role')
   await page.getByLabel('Application link').fill('https://example.com/careers/123')
   await page.getByRole('button', { name: 'Save application' }).click()
   await page.reload()
   await page.getByText('Potential role', { exact: true }).waitFor()
-  let potential = await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))[0])
+  let potential = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('pipedin.applications.v1'))[0],
+  )
   assert.equal(potential.stage, 'potential')
   assert.equal(potential.title, '')
   assert.ok(potential.createdAt)
@@ -23,12 +30,14 @@ const fs = require('node:fs/promises')
   await page.getByLabel('Pipeline stage').selectOption('applied')
   await page.getByLabel('Job title').fill('Potential engineer')
   await page.getByRole('button', { name: 'Save application' }).click()
-  potential = await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))[0])
+  potential = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('pipedin.applications.v1'))[0],
+  )
   assert.equal(potential.stageHistory.length, 2)
   assert.equal(potential.stageHistory[0].stage, 'potential')
   assert.equal(potential.stageHistory[1].stage, 'applied')
   await page.getByRole('heading', { name: 'Potential engineer' }).click()
-  page.once('dialog', dialog => dialog.accept())
+  page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await page.getByRole('button', { name: 'Add application', exact: true }).first().click()
   await page.getByLabel('Company name').fill('Test Company')
@@ -47,7 +56,9 @@ const fs = require('node:fs/promises')
   await page.getByRole('button', { name: 'Save application' }).click()
   await page.reload()
   await page.getByRole('heading', { name: 'Frontend Engineer' }).waitFor()
-  let stored = await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1')))
+  let stored = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('pipedin.applications.v1')),
+  )
   assert.equal(stored[0].employmentType, 'Contract')
   assert.ok(stored[0].createdAt)
   assert.ok(stored[0].updatedAt)
@@ -64,7 +75,9 @@ const fs = require('node:fs/promises')
   assert.equal(stored[0].stageHistory.length, 2)
   assert.equal(stored[0].reasons.declined, 'Another opportunity')
   assert.equal(await page.locator('.column').count(), 6)
-  const ended = page.locator('.column').filter({ has: page.getByRole('heading', { name: 'Ended', exact: true }) })
+  const ended = page
+    .locator('.column')
+    .filter({ has: page.getByRole('heading', { name: 'Ended', exact: true }) })
   await ended.getByText('Test Company', { exact: true }).waitFor()
   await ended.getByText('Declined', { exact: true }).waitFor()
   const jsonDownload = page.waitForEvent('download')
@@ -83,15 +96,27 @@ const fs = require('node:fs/promises')
   assert.ok(csv.includes('"Employment type"'))
   assert.ok(csv.includes('"Contract"'))
   await page.getByLabel('Search applications', { exact: true }).fill('')
-  page.once('dialog', dialog => dialog.accept())
+  page.once('dialog', (dialog) => dialog.accept())
   const fileChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Import JSON', exact: true }).click()
-  await (await fileChooser).setFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(backup) })
+  await (
+    await fileChooser
+  ).setFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(backup) })
   await page.getByRole('status').filter({ hasText: 'Backup restored.' }).waitFor()
-  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))), stored)
-  await page.getByLabel('Import JSON backup file').setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{"version":1,"applications":[{}]}') })
+  assert.deepEqual(
+    await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))),
+    stored,
+  )
+  await page.getByLabel('Import JSON backup file').setInputFiles({
+    name: 'invalid.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{"version":1,"applications":[{}]}'),
+  })
   await page.getByRole('status').filter({ hasText: 'invalid' }).waitFor()
-  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))), stored)
+  assert.deepEqual(
+    await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))),
+    stored,
+  )
   await page.getByRole('button', { name: 'Switch to dark mode' }).click()
   await page.reload()
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark')
@@ -102,8 +127,16 @@ const fs = require('node:fs/promises')
   await page.screenshot({ path: '/app/test-results/pipeline-desktop.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: '/app/test-results/pipeline-mobile.png', fullPage: true })
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+  )
   assert.deepEqual(errors, [])
-  console.log('Browser smoke test passed: JSON export/import, invalid import preservation, CSV current status with filters, create, custom fields, interview rating, reload persistence, outcome reason, theme persistence, and mobile overflow.')
+  console.log(
+    'Browser smoke test passed: JSON export/import, invalid import preservation, CSV current status with filters, create, custom fields, interview rating, reload persistence, outcome reason, theme persistence, and mobile overflow.',
+  )
   await browser.close()
-})().catch(error => { console.error(error); process.exit(1) })
+})().catch((error) => {
+  console.error(error)
+  process.exit(1)
+})
