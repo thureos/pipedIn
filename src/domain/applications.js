@@ -33,8 +33,28 @@ export const columnForStage = (stage) =>
   endingOutcomes.some((outcome) => outcome.id === stage) ? 'ended' : stage
 export const boardStages = [
   ...stages.filter((stage) => columnForStage(stage.id) !== 'ended'),
-  { id: 'ended', name: 'Ended', color: '#979aa0' },
+  { id: 'ended', name: 'Completed', color: '#979aa0' },
 ]
+export function reorderApplications(items, draggedId, targetId, position = 'before') {
+  const dragged = items.find((item) => item.id === draggedId)
+  const target = items.find((item) => item.id === targetId)
+  if (
+    !dragged ||
+    !target ||
+    dragged.id === target.id ||
+    columnForStage(dragged.stage) !== columnForStage(target.stage)
+  )
+    return items
+  const column = columnForStage(target.stage)
+  const ordered = items.filter((item) => columnForStage(item.stage) === column)
+  const remaining = ordered.filter((item) => item.id !== draggedId)
+  const targetIndex = remaining.findIndex((item) => item.id === targetId)
+  remaining.splice(targetIndex + (position === 'after' ? 1 : 0), 0, dragged)
+  let index = 0
+  return items.map((item) =>
+    columnForStage(item.stage) === column ? remaining[index++] : item,
+  )
+}
 export const reasonLabels = {
   declined: 'Reason for declining',
   rejected: 'Reason for rejection',
@@ -168,7 +188,7 @@ export function validateApplications(items) {
     if (
       !item.company.trim() ||
       (item.stage !== 'potential' && !item.title.trim()) ||
-      (item.stage === 'potential' && !isApplicationUrl(item.url)) ||
+      (item.stage === 'potential' && item.url !== '' && !isApplicationUrl(item.url)) ||
       !['Remote', 'Onsite', 'Hybrid'].includes(item.workplace)
     )
       throw new Error('The backup has invalid application details.')

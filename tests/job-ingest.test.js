@@ -214,6 +214,7 @@ test('endpoint enforces origin, body shape and request rate, and returns extract
 test('production server serves the SPA and runtime config while blocking traversal paths', async (t) => {
   const distDirectory = await mkdtemp(join(tmpdir(), 'pipedin-dist-'))
   await writeFile(join(distDirectory, 'index.html'), '<main>app</main>')
+  await writeFile(join(distDirectory, 'version.json'), JSON.stringify({ id: 'build-123' }))
   await mkdir(join(distDirectory, 'assets'))
   await writeFile(join(distDirectory, 'assets', 'app.js'), 'window.loaded = true')
   const server = createAppServer({
@@ -232,8 +233,13 @@ test('production server serves the SPA and runtime config while blocking travers
   })
   const base = `http://127.0.0.1:${server.address().port}`
   assert.equal(await (await fetch(`${base}/pipeline`)).text(), '<main>app</main>')
+  assert.equal((await fetch(`${base}/pipeline`)).headers.get('cache-control'), 'no-cache')
   const asset = await fetch(`${base}/assets/app.js`)
   assert.equal(asset.headers.get('content-type'), 'text/javascript; charset=utf-8')
+  assert.equal(asset.headers.get('cache-control'), 'public, max-age=31536000, immutable')
+  const version = await fetch(`${base}/version.json`)
+  assert.equal(version.headers.get('cache-control'), 'no-store')
+  assert.deepEqual(await version.json(), { id: 'build-123' })
   assert.equal(
     (await (await fetch(`${base}/runtime-config.js`)).text()).includes('client-id'),
     true,

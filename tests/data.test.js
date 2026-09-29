@@ -11,11 +11,13 @@ import {
   columnForStage,
   endingOutcomes,
   salaryRangeLabel,
+  reorderApplications,
 } from '../src/domain/applications.js'
 const application = () => ({ ...blankApplication(), company: 'Example', title: 'Engineer' })
 test('terminal outcomes share one column without changing saved reasons or history', () => {
   assert.equal(boardStages.length, 6)
   assert.equal(boardStages.at(-1).id, 'ended')
+  assert.equal(boardStages.at(-1).name, 'Completed')
   for (const outcome of endingOutcomes) {
     const item = stampApplication(
       { ...application(), stage: outcome.id },
@@ -29,6 +31,31 @@ test('terminal outcomes share one column without changing saved reasons or histo
   }
   assert.equal(columnForStage('offer'), 'offer')
   assert.throws(() => validateApplications([{ ...application(), stage: 'ended' }]))
+})
+test('reorders applications within their visible column without changing records', () => {
+  const first = { ...application(), id: 'first' }
+  const unrelated = { ...application(), id: 'unrelated', stage: 'potential', url: '' }
+  const second = { ...application(), id: 'second' }
+  const declined = { ...application(), id: 'declined', stage: 'declined' }
+  const accepted = { ...application(), id: 'accepted', stage: 'accepted' }
+  const items = [first, unrelated, second, declined, accepted]
+  const reordered = reorderApplications(items, 'second', 'first', 'before')
+  assert.deepEqual(reordered.map((item) => item.id), [
+    'second',
+    'unrelated',
+    'first',
+    'declined',
+    'accepted',
+  ])
+  assert.deepEqual(reorderApplications(items, 'declined', 'accepted', 'after').map((i) => i.id), [
+    'first',
+    'unrelated',
+    'second',
+    'accepted',
+    'declined',
+  ])
+  assert.equal(reorderApplications(items, 'first', 'unrelated'), items)
+  assert.deepEqual(reordered[0], first)
 })
 test('valid backup preserves interview ratings, outcome reasons and custom fields', () => {
   const item = application()
@@ -102,7 +129,8 @@ test('potential applications need a name and safe link, but no job title', () =>
     url: 'https://example.com/job',
   }
   assert.equal(validateApplications([potential])[0].title, '')
-  for (const url of ['', 'javascript:alert(1)', 'not a url'])
+  assert.equal(validateApplications([{ ...potential, url: '' }])[0].url, '')
+  for (const url of ['javascript:alert(1)', 'not a url'])
     assert.throws(() => validateApplications([{ ...potential, url }]))
   assert.throws(() => validateApplications([{ ...potential, stage: 'applied' }]))
 })

@@ -83,7 +83,11 @@ export function createAppServer({
       response.setHeader('Content-Length', metadata.size)
       response.setHeader(
         'Cache-Control',
-        pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+        pathname === '/version.json'
+          ? 'no-store'
+          : pathname.startsWith('/assets/')
+            ? 'public, max-age=31536000, immutable'
+            : 'no-cache',
       )
       if (request.method === 'HEAD') return response.end()
       const stream = createReadStream(target)

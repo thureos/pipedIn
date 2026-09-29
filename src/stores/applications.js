@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { validateApplications, demoApplications, stampApplication } from '../domain/applications.js'
+import {
+  validateApplications,
+  demoApplications,
+  stampApplication,
+  reorderApplications,
+} from '../domain/applications.js'
 export const useApplications = defineStore('applications', () => {
   const applications = ref([])
   const error = ref('')
@@ -35,11 +40,16 @@ export const useApplications = defineStore('applications', () => {
     const item = applications.value.find((a) => a.id === id)
     return item ? save({ ...JSON.parse(JSON.stringify(item)), stage }) : false
   }
+  function reorder(id, targetId, position) {
+    const next = reorderApplications(applications.value, id, targetId, position)
+    return next === applications.value || commit(next)
+  }
   return {
     applications,
     error,
     save,
     move,
+    reorder,
     remove: (id) => commit(applications.value.filter((a) => a.id !== id)),
     replace: (items) => commit(validateApplications(items)),
     demo: () => commit(demoApplications()),

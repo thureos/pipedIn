@@ -1,13 +1,14 @@
 .salary-range-inputs {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
 }
 .salary-range-inputs > label {
   min-width: 0;
 }
 .salary-input {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -15,12 +16,15 @@
   border: 1px solid var(--border);
   border-radius: 5px;
   padding: 0 9px;
+  min-height: 38px;
   background: var(--input);
   color: var(--muted);
 }
 .dialog .salary-input input {
   width: 100%;
   min-width: 0;
+  height: 36px;
+  min-height: 0;
   border: 0;
   outline: 0;
   padding: 9px 0;

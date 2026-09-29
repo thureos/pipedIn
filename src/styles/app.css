@@ -708,6 +708,12 @@ h1 {
   box-shadow: 0 5px 15px #291d3d18;
   border-color: var(--accent);
 }
+.application-card.drop-before {
+  box-shadow: inset 0 3px var(--accent), 0 2px 3px #291d3d18;
+}
+.application-card.drop-after {
+  box-shadow: inset 0 -3px var(--accent), 0 2px 3px #291d3d18;
+}
 .card-main {
   padding: 15px 14px 0;
   display: block;
@@ -1142,7 +1148,9 @@ h1 {
 .form-grid select,
 .form-grid textarea,
 .inline-input input {
+  box-sizing: border-box;
   width: 100%;
+  min-height: 38px;
   padding: 10px 11px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1163,6 +1171,7 @@ h1 {
   color: var(--muted);
 }
 .form-grid textarea {
+  min-height: 88px;
   resize: vertical;
 }
 .full {
@@ -1198,7 +1207,15 @@ h1 {
 .inline-input {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
+}
+.inline-input input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.inline-input.attribute > button {
+  flex: 0 0 38px;
+  min-height: 38px;
 }
 .field-heading {
   display: flex;
@@ -1307,6 +1324,28 @@ h1 {
 .toast > svg {
   color: var(--accent);
   flex-shrink: 0;
+}
+.update-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+  padding: 9px 10px 9px 14px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: 0 6px 25px #291d3d30;
+  color: var(--text);
+  font-size: 12px;
+}
+.update-banner .primary {
+  min-height: 34px;
+  padding: 7px 10px;
 }
 [data-theme='dark'] nav button.selected {
   background: var(--selected);
@@ -1975,11 +2014,12 @@ h1 {
   display: none;
 }
 .column.condensed .application-card .condensed-card-main {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 3px;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 3px;
   width: 100%;
   min-height: 56px;
   padding: 10px 12px;
@@ -1992,8 +2032,12 @@ h1 {
   border-radius: 50%;
   background: var(--card-line, var(--accent));
   flex-shrink: 0;
+  grid-column: 1;
+  grid-row: 1 / span 2;
 }
 .condensed-card-name {
+  grid-column: 2;
+  grid-row: 1;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -2002,6 +2046,8 @@ h1 {
   text-overflow: ellipsis;
 }
 .condensed-card-position {
+  grid-column: 2;
+  grid-row: 2;
   font-size: 9px;
   color: var(--muted);
   white-space: nowrap;
@@ -2094,6 +2140,9 @@ h1 {
 }
 .column.minimized .condensed-card-name,
 .column.minimized .condensed-card-position {
+  display: none;
+}
+.column.minimized .condensed-card-main::before {
   display: none;
 }
 .minimized-card-letter {

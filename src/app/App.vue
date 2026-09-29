@@ -41,6 +41,7 @@ import {
   Link2,
   Share2,
   ClipboardPaste,
+  RefreshCw,
 } from 'lucide-vue-next'
 import CardPreferences from '../components/CardPreferences.vue'
 import { useApplications } from '../stores/applications.js'
@@ -62,6 +63,7 @@ import {
   reasonLabels,
   blankApplication,
   validateApplications,
+  stampApplication,
   ageLabel,
   isApplicationUrl,
   salaryRangeLabel,
@@ -69,6 +71,7 @@ import {
 import { encodeApplicationShare, decodeApplicationShare } from '../services/sharing.js'
 import { fetchJobPosting } from '../services/jobPosting.js'
 const store = useApplications()
+const buildId = import.meta.env.VITE_BUILD_ID
 const search = ref(''),
   workplace = ref('All locations'),
   view = ref('pipeline'),
@@ -83,6 +86,10 @@ const search = ref(''),
   companyInput = ref(null),
   dragging = ref(''),
   dropStage = ref(''),
+  dropTarget = ref(''),
+  dropPosition = ref('before'),
+  updateAvailable = ref(false),
+  updateDismissed = ref(false),
   boardDensity = ref('comfortable'),
   minimizedColumns = ref(new Set()),
   shareReceiveModal = ref(false),
@@ -111,6 +118,11 @@ const pipelineStage = computed({
     draft.value.stage = value
   },
 })
+const potentialUrlRequired = computed(
+  () =>
+    draft.value.stage === 'potential' &&
+    !store.applications.some((application) => application.id === draft.value.id),
+)
 const salaryRangeInvalid = computed(() => {
   const minimum = draft.value.salaryMinimumK
   const maximum = draft.value.salaryMaximumK
@@ -141,7 +153,7 @@ const oldestInStage = (stage) => {
     .sort()
   return dates.length ? `Oldest ${age(dates[0])}` : items.length ? 'Age unknown' : 'No items'
 }
-let noticeTimer, driveMenuTimer, driveTestingTimer, previousFocus
+let noticeTimer, driveMenuTimer, driveTestingTimer, previousFocus, versionCheckTimer
 function closeOtherMenu(menu) {
   ;(menu === 'import' ? exportMenu : importMenu).value?.removeAttribute('open')
 }
@@ -248,6 +260,26 @@ function toast(message) {
   clearTimeout(noticeTimer)
   noticeTimer = setTimeout(() => (notice.value = ''), 4500)
 }
+async function checkDeploymentVersion() {
+  if (!buildId || updateAvailable.value || updateDismissed.value) return
+  try {
+    const response = await fetch(`/version.json?check=${Date.now()}`, { cache: 'no-store' })
+    if (!response.ok) return
+    const deployed = await response.json()
+    if (!updateDismissed.value && deployed.id && deployed.id !== buildId)
+      updateAvailable.value = true
+  } catch {}
+}
+function handleDeploymentVisibility() {
+  if (document.visibilityState === 'visible') checkDeploymentVersion()
+}
+function reloadForDeployment() {
+  window.location.reload()
+}
+function dismissUpdateNotice() {
+  updateAvailable.value = false
+  updateDismissed.value = true
+}
 async function openApplication(item, stage = 'applied') {
   previousFocus = document.activeElement
   draft.value = item ? JSON.parse(JSON.stringify(item)) : { ...blankApplication(), stage }
@@ -283,7 +315,7 @@ function save() {
     toast('Minimum salary must be less than or equal to maximum salary.')
     return
   }
-  if (draft.value.stage === 'potential' && !isApplicationUrl(draft.value.url)) {
+  if (potentialUrlRequired.value && !isApplicationUrl(draft.value.url)) {
     tab.value = 'details'
     toast('Enter a valid http or https application link.')
     return
@@ -338,13 +370,35 @@ function startDragging(application, event) {
   event.dataTransfer.setData('text/plain', application.id)
   event.dataTransfer.effectAllowed = 'move'
 }
+function setCardDropTarget(application, stage, event) {
+  const bounds = event.currentTarget.getBoundingClientRect()
+  dropStage.value = stage
+  dropTarget.value = application.id
+  dropPosition.value = event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'
+}
+function clearCardDropTarget(application, event) {
+  if (event.currentTarget.contains(event.relatedTarget)) return
+  if (dropTarget.value === application.id) dropTarget.value = ''
+}
 function stopDragging() {
   dragging.value = ''
   dropStage.value = ''
+  dropTarget.value = ''
 }
-function drop(stage) {
+function drop(stage, targetId = '') {
   const item = store.applications.find((a) => a.id === dragging.value)
-  if (item && columnForStage(item.stage) !== stage) {
+  if (item && columnForStage(item.stage) === stage) {
+    const columnItems = store.applications.filter((a) => columnForStage(a.stage) === stage)
+    const target = targetId
+      ? store.applications.find((a) => a.id === targetId)
+      : columnItems.filter((a) => a.id !== item.id).at(-1)
+    if (
+      target &&
+      target.id !== item.id &&
+      store.reorder(item.id, target.id, targetId ? dropPosition.value : 'after')
+    )
+      toast(`Priority updated for ${item.company}.`)
+  } else if (item) {
     if (
       stage === 'ended' ||
       (stage !== 'potential' && !item.title.trim()) ||
@@ -356,6 +410,7 @@ function drop(stage) {
   }
   dragging.value = ''
   dropStage.value = ''
+  dropTarget.value = ''
 }
 function downloadFile(content, type, filename) {
   const url = URL.createObjectURL(new Blob([content], { type }))
@@ -407,9 +462,20 @@ function openShareReceiver() {
   shareReceiveModal.value = true
 }
 function importSharedApplication(application) {
-  const [validated] = validateApplications([{ ...application, id: crypto.randomUUID() }])
+  const defaults = blankApplication()
+  const incoming = {
+    ...defaults,
+    ...application,
+    id: crypto.randomUUID(),
+    stage: 'potential',
+    reasons: { ...defaults.reasons, ...application.reasons },
+    stageEnteredAt: null,
+    stageHistory: [],
+  }
+  const [validated] = validateApplications([incoming])
+  const imported = stampApplication(validated, null)
   const current = JSON.parse(JSON.stringify(store.applications))
-  if (!store.replace([...current, validated]))
+  if (!store.replace([...current, imported]))
     throw new Error(store.error || 'Unable to save the shared application.')
 }
 async function receiveApplication() {
@@ -435,7 +501,7 @@ async function receiveApplication() {
         throw new Error('The shared data must contain one application.')
       importSharedApplication(application)
       shareReceiveModal.value = false
-      toast('Shared application added to your pipeline.')
+      toast('Shared application added to Potential applications.')
     }
   } catch (error) {
     shareError.value = error.message || 'Unable to receive this application.'
@@ -690,14 +756,21 @@ function keydown(event) {
 onMounted(() => {
   document.addEventListener('keydown', keydown)
   ageTimer = setInterval(() => (now.value = Date.now()), 30000)
+  versionCheckTimer = setInterval(checkDeploymentVersion, 300000)
+  window.addEventListener('focus', checkDeploymentVersion)
+  document.addEventListener('visibilitychange', handleDeploymentVisibility)
+  checkDeploymentVersion()
   driveConnected.value = googleDriveConnected()
 })
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', keydown)
+  window.removeEventListener('focus', checkDeploymentVersion)
+  document.removeEventListener('visibilitychange', handleDeploymentVisibility)
   clearTimeout(noticeTimer)
   clearTimeout(driveMenuTimer)
   clearTimeout(driveTestingTimer)
   clearInterval(ageTimer)
+  clearInterval(versionCheckTimer)
 })
 </script>
 
@@ -711,6 +784,20 @@ onBeforeUnmount(() => {
       hidden
       @change="importData"
     />
+    <div v-if="updateAvailable" class="update-banner" role="status" aria-live="polite">
+      <span>A new version is available.</span>
+      <button class="primary" type="button" @click="reloadForDeployment">
+        <RefreshCw :size="14" /> Reload
+      </button>
+      <button
+        class="icon-button"
+        type="button"
+        aria-label="Dismiss update notice"
+        @click="dismissUpdateNotice"
+      >
+        <X :size="15" />
+      </button>
+    </div>
     <aside class="sidebar">
       <a class="brand" aria-label="pipedIn home" href="#" @click.prevent="view = 'pipeline'"
         ><picture
@@ -1023,8 +1110,15 @@ onBeforeUnmount(() => {
                     :key="application.id"
                     class="application-card"
                     :data-color="application.color"
+                    :class="{
+                      'drop-before': dropTarget === application.id && dropPosition === 'before',
+                      'drop-after': dropTarget === application.id && dropPosition === 'after',
+                    }"
                     draggable="true"
                     @dragstart="startDragging(application, $event)"
+                    @dragover.prevent.stop="setCardDropTarget(application, stage.id, $event)"
+                    @dragleave.stop="clearCardDropTarget(application, $event)"
+                    @drop.prevent.stop="drop(stage.id, application.id)"
                     @dragend="stopDragging"
                   >
                     <button
@@ -1199,7 +1293,7 @@ onBeforeUnmount(() => {
                   }}<template v-if="a.stageEnteredAt"> in stage</template></span
                 ><span class="status-pill">{{
                   columnForStage(a.stage) === 'ended'
-                    ? 'Ended · ' + endingOutcomes.find((o) => o.id === a.stage)?.name
+                    ? 'Completed · ' + endingOutcomes.find((o) => o.id === a.stage)?.name
                     : stages.find((s) => s.id === a.stage).name
                 }}</span
                 ><ArrowUpRight :size="17" />
@@ -1233,7 +1327,7 @@ onBeforeUnmount(() => {
                 ><ShieldCheck :size="14" /> Your journey stays yours. All data is saved in this
                 browser.</span
               ><span v-if="view === 'pipeline'"
-                ><GripVertical :size="14" /> Drag cards to move them between stages</span
+                ><GripVertical :size="14" /> Drag cards to reorder or move between stages</span
               ><span class="policy-links"
                 ><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a></span
               >
@@ -1600,7 +1694,7 @@ onBeforeUnmount(() => {
                 <div class="url-field">
                   <input
                     v-model="draft.url"
-                    :required="draft.stage === 'potential'"
+                    :required="potentialUrlRequired"
                     type="url"
                     placeholder="https://…"
                   /><a

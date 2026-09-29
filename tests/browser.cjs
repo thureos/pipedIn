@@ -10,7 +10,13 @@ const fs = require('node:fs/promises')
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/version.json*', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"id":"newer-build"}' }),
+  )
   await page.goto(process.env.APP_URL || 'http://localhost:5173')
+  await page.getByRole('status').filter({ hasText: 'A new version is available.' }).waitFor()
+  await page.getByRole('button', { name: 'Dismiss update notice' }).click()
+  await page.unroute('**/version.json*')
   await page
     .getByRole('button', { name: 'Add application to Potential applications', exact: true })
     .click()
@@ -77,7 +83,7 @@ const fs = require('node:fs/promises')
   assert.equal(await page.locator('.column').count(), 6)
   const ended = page
     .locator('.column')
-    .filter({ has: page.getByRole('heading', { name: 'Ended', exact: true }) })
+    .filter({ has: page.getByRole('heading', { name: 'Completed', exact: true }) })
   await ended.getByText('Test Company', { exact: true }).waitFor()
   await ended.getByText('Declined', { exact: true }).waitFor()
   const jsonDownload = page.waitForEvent('download')
@@ -116,6 +122,91 @@ const fs = require('node:fs/promises')
   assert.deepEqual(
     await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))),
     stored,
+  )
+  const shared = await page.evaluate(() => {
+    const application = JSON.parse(localStorage.getItem('pipedin.applications.v1'))[0]
+    application.stage = 'interviews'
+    application.stageEnteredAt = '2020-01-01T00:00:00.000Z'
+    application.stageHistory = [{ stage: 'interviews', enteredAt: '2020-01-01T00:00:00.000Z' }]
+    application.url = ''
+    const bytes = new TextEncoder().encode(JSON.stringify(application))
+    let binary = ''
+    for (const byte of bytes) binary += String.fromCharCode(byte)
+    return btoa(binary)
+  })
+  await page.getByRole('button', { name: 'Receive / ingest' }).click()
+  await page.getByLabel('Shared application or job posting URL').fill(shared)
+  await page.getByRole('button', { name: 'Receive application' }).click()
+  let imported = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('pipedin.applications.v1')),
+  )
+  imported = imported.find((application) => application.stage === 'potential')
+  assert.equal(imported.url, '')
+  assert.equal(imported.stageHistory.length, 1)
+  assert.equal(imported.stageHistory[0].stage, 'potential')
+  assert.notEqual(imported.stageEnteredAt, '2020-01-01T00:00:00.000Z')
+  const potentialColumn = page
+    .locator('.column')
+    .filter({ has: page.getByRole('heading', { name: 'Potential applications', exact: true }) })
+  await potentialColumn
+    .locator('.application-card')
+    .filter({ hasText: 'Test Company' })
+    .locator('.card-main')
+    .click()
+  await page.getByLabel('Opportunity name').fill('Shared potential')
+  await page.getByRole('button', { name: 'Save application' }).click()
+  imported = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('pipedin.applications.v1')).find(
+      (application) => application.company === 'Shared potential',
+    ),
+  )
+  assert.equal(imported.stage, 'potential')
+  assert.equal(imported.url, '')
+
+  await page.getByRole('button', { name: 'Add application to Completed', exact: true }).click()
+  await page.getByLabel('Company name').fill('Other Company')
+  await page.getByLabel('Job title').fill('Product Engineer')
+  await page.getByLabel('Reason for ending').selectOption('rejected')
+  await page.getByRole('button', { name: 'Save application' }).click()
+  const completed = page
+    .locator('.column')
+    .filter({ has: page.getByRole('heading', { name: 'Completed', exact: true }) })
+  await completed.locator('.application-card').filter({ hasText: 'Other Company' }).waitFor()
+  await completed
+    .locator('.application-card')
+    .filter({ hasText: 'Test Company' })
+    .dragTo(completed.locator('.application-card').filter({ hasText: 'Other Company' }))
+  let completedOrder = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('pipedin.applications.v1'))
+      .filter((application) =>
+        ['accepted', 'declined', 'rejected', 'withdrawn'].includes(application.stage),
+      )
+      .map((application) => application.company),
+  )
+  assert.deepEqual(completedOrder, ['Other Company', 'Test Company'])
+  await page.reload()
+  completedOrder = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('pipedin.applications.v1'))
+      .filter((application) =>
+        ['accepted', 'declined', 'rejected', 'withdrawn'].includes(application.stage),
+      )
+      .map((application) => application.company),
+  )
+  assert.deepEqual(completedOrder, ['Other Company', 'Test Company'])
+  const appliedColumn = page
+    .locator('.column')
+    .filter({ has: page.getByRole('heading', { name: 'Applied', exact: true }) })
+  await completed
+    .locator('.application-card')
+    .filter({ hasText: 'Test Company' })
+    .dragTo(appliedColumn.locator('.column-line'))
+  assert.equal(
+    await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('pipedin.applications.v1')).find(
+        (application) => application.company === 'Test Company',
+      ).stage,
+    ),
+    'applied',
   )
   await page.getByRole('button', { name: 'Switch to dark mode' }).click()
   await page.reload()
