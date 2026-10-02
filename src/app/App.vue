@@ -63,7 +63,6 @@ import {
   reasonLabels,
   blankApplication,
   validateApplications,
-  stampApplication,
   ageLabel,
   isApplicationUrl,
   salaryRangeLabel,
@@ -461,7 +460,7 @@ function openShareReceiver() {
   shareError.value = ''
   shareReceiveModal.value = true
 }
-function importSharedApplication(application) {
+function sharedApplicationDraft(application) {
   const defaults = blankApplication()
   const incoming = {
     ...defaults,
@@ -473,10 +472,7 @@ function importSharedApplication(application) {
     stageHistory: [],
   }
   const [validated] = validateApplications([incoming])
-  const imported = stampApplication(validated, null)
-  const current = JSON.parse(JSON.stringify(store.applications))
-  if (!store.replace([...current, imported]))
-    throw new Error(store.error || 'Unable to save the shared application.')
+  return validated
 }
 async function receiveApplication() {
   const value = shareInput.value.trim()
@@ -490,18 +486,23 @@ async function receiveApplication() {
     if (isApplicationUrl(value)) {
       const posting = await fetchJobPosting(value)
       const application = { ...blankApplication(), ...posting, stage: 'applied' }
-      validateApplications([application])
+      // Imported metadata is a draft; required fields are enforced when saving.
       shareReceiveModal.value = false
       await openApplication(application)
-      toast('Job posting imported. Review the details, then save the application.')
+      toast(
+        posting.company
+          ? 'Job posting imported. Review the details, then save the application.'
+          : 'Job posting imported without a company name. Enter the company, then save.',
+      )
     } else {
       const decoded = decodeApplicationShare(value)
       const application = decoded?.application ?? decoded
       if (!application || typeof application !== 'object' || Array.isArray(application))
         throw new Error('The shared data must contain one application.')
-      importSharedApplication(application)
+      const incoming = sharedApplicationDraft(application)
       shareReceiveModal.value = false
-      toast('Shared application added to Potential applications.')
+      await openApplication(incoming)
+      toast('Shared application received. Review the details, then save the application.')
     }
   } catch (error) {
     shareError.value = error.message || 'Unable to receive this application.'
@@ -1956,8 +1957,8 @@ onBeforeUnmount(() => {
               ></textarea>
             </label>
             <p class="receive-note">
-              Base64 shares restore the full application. Job URLs are read for schema.org
-              JobPosting data.
+              Base64 shares and job URLs open for review before saving. Job URLs are read for
+              embedded schema.org JobPosting data (JSON-LD or microdata).
             </p>
             <div v-if="shareError" class="error-banner" role="alert">{{ shareError }}</div>
           </div>

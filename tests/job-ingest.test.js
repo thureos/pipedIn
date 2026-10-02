@@ -16,6 +16,7 @@ import {
 } from '../server/job-ingest.js'
 import { createAppServer } from '../server/index.js'
 import { extractJobPosting } from '../src/services/jobPosting.js'
+import { blankApplication, validateApplications } from '../src/domain/applications.js'
 
 test('public address check rejects private, reserved, mapped and link-local IPs', () => {
   for (const address of [
@@ -246,4 +247,44 @@ test('production server serves the SPA and runtime config while blocking travers
   )
   assert.equal((await fetch(`${base}/api/job-posting`, { method: 'POST' })).status, 202)
   assert.equal((await fetch(`${base}/%2e%2e%2fsecret.txt`)).status, 404)
+})
+
+test('Workday postings with an empty organization import for review but require a company to save', async (t) => {
+  const url =
+    'https://ministrybrands.wd1.myworkdayjobs.com/Ministry_Brands/job/US-MB-Home-Office/Principal-Software-Engineer_R876?source=LinkedIn'
+  const job = {
+    '@context': 'https://schema.org',
+    '@type': 'JobPosting',
+    title: 'Principal Software Engineer',
+    hiringOrganization: { '@type': 'Organization', name: '', sameAs: '' },
+    employmentType: 'FULL_TIME',
+    jobLocation: {
+      '@type': 'Place',
+      address: { addressCountry: 'United States of America', addressLocality: 'US-MB-Home Office' },
+    },
+  }
+  const server = createServer(
+    createJobIngestHandler({
+      fetcher: async () => `<script type="application/ld+json">${JSON.stringify(job)}</script>`,
+    }),
+  )
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => server.close())
+  const base = `http://127.0.0.1:${server.address().port}`
+  const response = await fetch(`${base}/api/job-posting`, {
+    method: 'POST',
+    headers: { Origin: base, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+  assert.equal(response.status, 200)
+  const { application } = await response.json()
+  assert.equal(application.company, '')
+  assert.equal(application.title, 'Principal Software Engineer')
+  assert.equal(application.employmentType, 'Full-time')
+  assert.equal(application.url, url)
+  const draft = { ...blankApplication(), ...application, stage: 'applied' }
+  assert.throws(() => validateApplications([draft]), /invalid application details/)
+  draft.company = 'Ministry Brands'
+  assert.doesNotThrow(() => validateApplications([draft]))
 })

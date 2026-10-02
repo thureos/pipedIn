@@ -1,30 +1,106 @@
+import { decodeHTML } from 'entities'
 import { employmentTypes, isApplicationUrl } from '../domain/applications.js'
 
 function asArray(value) {
   return Array.isArray(value) ? value : value ? [value] : []
 }
 
-function findJobPosting(value) {
+function findJobPosting(value, sourceUrl) {
   const pending = [{ value, depth: 0 }]
-  let scanned = 0
-  while (pending.length && scanned < 10000) {
+  const nodes = []
+  const seen = new Set()
+  while (pending.length && nodes.length < 10000) {
     const current = pending.pop()
-    if (!current.value || typeof current.value !== 'object' || current.depth > 32) continue
-    scanned += 1
-    if (!Array.isArray(current.value) && asArray(current.value['@type']).includes('JobPosting'))
-      return current.value
-    for (const child of Object.values(current.value)) {
-      if (child && typeof child === 'object')
-        pending.push({ value: child, depth: current.depth + 1 })
+    if (
+      !current.value ||
+      typeof current.value !== 'object' ||
+      current.depth > 32 ||
+      seen.has(current.value)
+    )
+      continue
+    seen.add(current.value)
+    nodes.push(current.value)
+    const children = Object.values(current.value)
+    for (let i = children.length - 1; i >= 0; i -= 1)
+      if (children[i] && typeof children[i] === 'object')
+        pending.push({ value: children[i], depth: current.depth + 1 })
+  }
+  const refs = new Map()
+  const absoluteId = (id) => {
+    try {
+      return new URL(id, sourceUrl).href
+    } catch {
+      return id
     }
   }
-  return null
+  for (const node of nodes)
+    if (typeof node['@id'] === 'string' && Object.keys(node).length > 1)
+      refs.set(absoluteId(node['@id']), node)
+  let resolved = 0
+  function resolve(value, depth = 0, seen = new Set()) {
+    if (!value || typeof value !== 'object' || depth > 8 || seen.has(value) || resolved++ >= 20000)
+      return null
+    const nextSeen = new Set(seen).add(value)
+    if (Array.isArray(value))
+      return value
+        .slice(0, 100)
+        .map((entry) =>
+          entry && typeof entry === 'object' ? resolve(entry, depth + 1, nextSeen) : entry,
+        )
+    const reference = typeof value['@id'] === 'string' ? refs.get(absoluteId(value['@id'])) : null
+    const merged = reference ? { ...reference, ...value } : value
+    return Object.fromEntries(
+      Object.entries(merged).map(([key, entry]) => [
+        key,
+        entry && typeof entry === 'object' ? resolve(entry, depth + 1, nextSeen) : entry,
+      ]),
+    )
+  }
+  const jobs = nodes.filter((node) =>
+    asArray(node['@type']).some(
+      (type) =>
+        typeof type === 'string' && /^(?:https?:\/\/schema\.org\/)?JobPosting\/?$/.test(type),
+    ),
+  )
+  if (!jobs.length) return null
+  const normalizeUrl = (value) => {
+    try {
+      const url = new URL(value, sourceUrl)
+      return url.origin + url.pathname.replace(/\/$/, '')
+    } catch {
+      return ''
+    }
+  }
+  const candidates = jobs.map((job) => resolve(job)).filter((job) => plainText(job?.title, 200))
+  if (!candidates.length) throw new Error('The JobPosting is missing required job title.')
+  const score = (job) =>
+    (asArray(job.url).some(
+      (url) => typeof url === 'string' && normalizeUrl(url) === normalizeUrl(sourceUrl),
+    )
+      ? 100
+      : 0) +
+    (organizationName(job.hiringOrganization) ? 10 : 0) +
+    (plainText(job.description) ? 1 : 0)
+  return candidates.sort((a, b) => score(b) - score(a))[0]
+}
+
+function organizationName(value) {
+  return (
+    asArray(value)
+      .map((entry) => plainText(typeof entry === 'string' ? entry : entry?.name, 150))
+      .find(Boolean) || ''
+  )
 }
 
 function plainText(value, limit = 500) {
+  if (value && typeof value === 'object') value = value['@value']
   return typeof value === 'string'
-    ? value
-        .replace(/<[^>]*>/g, ' ')
+    ? decodeHTML(
+        value
+          .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
+          .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
+          .replace(/<[^>]*>/g, ' '),
+      )
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, limit)
@@ -41,7 +117,8 @@ function locationText(jobLocation) {
         address?.postalCode,
         address?.addressCountry?.name || address?.addressCountry,
       ]
-        .filter((value) => typeof value === 'string' && value.trim())
+        .map((value) => (typeof value === 'number' ? String(value) : plainText(value)))
+        .filter(Boolean)
         .join(', ')
     })
     .filter(Boolean)
@@ -56,12 +133,15 @@ function salaryRange(baseSalary) {
   if ((unit && !['YEAR', 'YEARLY', 'PER_YEAR'].includes(unit)) || (currency && currency !== 'USD'))
     return {}
   const toThousands = (amount) =>
-    Number.isFinite(Number(amount)) && Number(amount) >= 0
+    (typeof amount === 'number' || (typeof amount === 'string' && amount.trim() !== '')) &&
+    Number.isFinite(Number(amount)) &&
+    Number(amount) >= 0
       ? Math.round(Number(amount) / 100) / 10
       : null
-  const amount = typeof value === 'number' ? value : value?.value
+  const amount = ['number', 'string'].includes(typeof value) ? value : value?.value
   const minimum = toThousands(value?.minValue ?? amount)
   const maximum = toThousands(value?.maxValue ?? amount)
+  if (minimum !== null && maximum !== null && minimum > maximum) return {}
   return { salaryMinimumK: minimum, salaryMaximumK: maximum }
 }
 
@@ -84,13 +164,11 @@ function employmentType(value) {
 }
 
 export function extractJobPosting(jsonLd, sourceUrl) {
-  const job = findJobPosting(jsonLd)
+  const job = findJobPosting(jsonLd, sourceUrl)
   if (!job) throw new Error('No schema.org JobPosting was found at this URL.')
-  const company = plainText(job.hiringOrganization?.name, 150)
+  const company = organizationName(job.hiringOrganization)
   const title = plainText(job.title, 200)
-  const missing = [!company && 'hiring organization', !title && 'job title'].filter(Boolean)
-  if (missing.length)
-    throw new Error(`The JobPosting is missing required ${missing.join(' and ')}.`)
+  if (!title) throw new Error('The JobPosting is missing required job title.')
   if (!isApplicationUrl(sourceUrl)) throw new Error('Enter a valid http or https job posting URL.')
   const remote = asArray(job.jobLocationType).some(
     (type) => String(type).toUpperCase() === 'TELECOMMUTE',

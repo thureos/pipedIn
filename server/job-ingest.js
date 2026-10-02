@@ -2,8 +2,10 @@ import { lookup as dnsLookup } from 'node:dns/promises'
 import http from 'node:http'
 import https from 'node:https'
 import { isIP } from 'node:net'
+import { createGunzip, createInflate, createBrotliDecompress } from 'node:zlib'
 import ipaddr from 'ipaddr.js'
 import { extractJobPosting } from '../src/services/jobPosting.js'
+import { embeddedJobData } from './structured-data.js'
 
 const MAX_URL_LENGTH = 2048
 const MAX_BODY_BYTES = 4096
@@ -116,6 +118,58 @@ export async function resolvePublicAddresses(
   return records
 }
 
+export function readHtmlResponse(response) {
+  const encoding = String(response.headers['content-encoding'] || 'identity')
+    .trim()
+    .toLowerCase()
+  const decompressors = { gzip: createGunzip, deflate: createInflate, br: createBrotliDecompress }
+  if (encoding !== 'identity' && !Object.hasOwn(decompressors, encoding)) {
+    response.destroy()
+    return Promise.reject(
+      new ServiceError(415, 'The job page uses an unsupported compression format.'),
+    )
+  }
+  if (Number(response.headers['content-length']) > MAX_HTML_BYTES) {
+    response.destroy()
+    return Promise.reject(new ServiceError(413, 'The job page is too large to import.'))
+  }
+  const stream = encoding === 'identity' ? response : decompressors[encoding]()
+  return new Promise((resolve, reject) => {
+    let settled = false
+    let received = 0
+    let decoded = 0
+    const chunks = []
+    const fail = (error) => {
+      if (settled) return
+      settled = true
+      response.destroy()
+      if (stream !== response) stream.destroy()
+      reject(error)
+    }
+    const oversized = () => fail(new ServiceError(413, 'The job page is too large to import.'))
+    response.on('data', (chunk) => {
+      received += chunk.length
+      if (received > MAX_HTML_BYTES) oversized()
+    })
+    response.on('error', fail)
+    response.on('aborted', () =>
+      fail(new ServiceError(502, 'The job page response was interrupted.')),
+    )
+    stream.on('error', fail)
+    stream.on('data', (chunk) => {
+      decoded += chunk.length
+      if (decoded > MAX_HTML_BYTES) oversized()
+      else chunks.push(chunk)
+    })
+    stream.on('end', () => {
+      if (settled) return
+      settled = true
+      resolve(Buffer.concat(chunks).toString('utf8'))
+    })
+    if (stream !== response) response.pipe(stream)
+  })
+}
+
 function requestPage(target, address, timeoutMs = FETCH_TIMEOUT_MS) {
   const transport = target.protocol === 'https:' ? https : http
   const hostname = target.hostname.replace(/^\[|\]$/g, '')
@@ -123,7 +177,7 @@ function requestPage(target, address, timeoutMs = FETCH_TIMEOUT_MS) {
     method: 'GET',
     headers: {
       Accept: 'text/html, application/xhtml+xml;q=0.9',
-      'Accept-Encoding': 'identity',
+      'Accept-Encoding': 'gzip, deflate, br',
       'User-Agent': 'pipedIn-job-import/1.0',
     },
     agent: false,
@@ -136,60 +190,44 @@ function requestPage(target, address, timeoutMs = FETCH_TIMEOUT_MS) {
 
   return new Promise((resolve, reject) => {
     let settled = false
+    let timer
     const finish = (error, value) => {
       if (settled) return
       settled = true
+      clearTimeout(timer)
       error ? reject(error) : resolve(value)
     }
     const request = transport.request(target, options, (response) => {
       const status = response.statusCode || 502
       const location = response.headers.location
       if ([301, 302, 303, 307, 308].includes(status)) {
-        response.resume()
+        response.destroy()
         finish(null, { status, location })
         return
       }
       if (status !== 200) {
-        response.resume()
+        response.destroy()
         finish(new ServiceError(502, `The job page returned HTTP ${status}.`))
         return
       }
       const type = String(response.headers['content-type'] || '').toLowerCase()
       if (!type.startsWith('text/html') && !type.startsWith('application/xhtml+xml')) {
-        response.resume()
+        response.destroy()
         finish(new ServiceError(415, 'The job URL did not return an HTML page.'))
         return
       }
-      if (
-        response.headers['content-encoding'] &&
-        response.headers['content-encoding'] !== 'identity'
-      ) {
-        response.resume()
-        finish(new ServiceError(415, 'Compressed job pages are not supported.'))
-        return
-      }
-      const contentLength = Number(response.headers['content-length'])
-      if (Number.isFinite(contentLength) && contentLength > MAX_HTML_BYTES) {
-        response.resume()
-        finish(new ServiceError(413, 'The job page is too large to import.'))
-        return
-      }
-      const chunks = []
-      let size = 0
-      response.on('data', (chunk) => {
-        size += chunk.length
-        if (size > MAX_HTML_BYTES) {
-          response.destroy()
-          finish(new ServiceError(413, 'The job page is too large to import.'))
-        } else chunks.push(chunk)
-      })
-      response.on('end', () =>
-        finish(null, { status, html: Buffer.concat(chunks).toString('utf8') }),
+      readHtmlResponse(response).then(
+        (html) => finish(null, { status, html }),
+        (error) => finish(error),
       )
-      response.on('error', (error) => finish(error))
     })
-    request.setTimeout(Math.max(1, Math.min(FETCH_TIMEOUT_MS, timeoutMs)), () =>
-      request.destroy(new ServiceError(502, 'Fetching the job page timed out.')),
+    timer = setTimeout(
+      () => {
+        const error = new ServiceError(502, 'Fetching the job page timed out.')
+        request.destroy(error)
+        finish(error)
+      },
+      Math.max(1, Math.min(FETCH_TIMEOUT_MS, timeoutMs)),
     )
     request.on('error', (error) => finish(error))
     request.end()
@@ -206,7 +244,9 @@ export async function fetchPublicHtml(
   const remaining = deadline - Date.now()
   if (remaining <= 0) throw new ServiceError(502, 'Fetching the job page timed out.')
   const addresses = await resolvePublicAddresses(target.hostname, resolver, remaining)
-  const response = await request(target, addresses[0], remaining)
+  const requestRemaining = deadline - Date.now()
+  if (requestRemaining <= 0) throw new ServiceError(502, 'Fetching the job page timed out.')
+  const response = await request(target, addresses[0], requestRemaining)
   if ([301, 302, 303, 307, 308].includes(response.status)) {
     if (!response.location || redirects >= MAX_REDIRECTS)
       throw new ServiceError(502, 'The job page redirected too many times.')
@@ -222,17 +262,17 @@ export async function fetchPublicHtml(
 }
 
 export function parseJobPostingHtml(html, sourceUrl) {
-  const scripts =
-    /<script\b[^>]*\btype\s*=\s*(["'])application\/ld\+json\1[^>]*>([\s\S]*?)<\/script\s*>/gi
-  let match
-  while ((match = scripts.exec(html)) !== null) {
-    try {
-      return extractJobPosting(JSON.parse(match[2]), sourceUrl)
-    } catch (error) {
-      if (error.message.includes('required')) throw new ServiceError(422, error.message)
-    }
+  if (typeof html !== 'string' || Buffer.byteLength(html) > MAX_HTML_BYTES)
+    throw new ServiceError(413, 'The job page is too large to import.')
+  try {
+    return extractJobPosting(embeddedJobData(html), sourceUrl)
+  } catch (error) {
+    if (error.message.includes('required')) throw new ServiceError(422, error.message)
+    throw new ServiceError(
+      422,
+      'No complete schema.org JobPosting was found in the page HTML. The site may require JavaScript or block automated access. You can add the application manually.',
+    )
   }
-  throw new ServiceError(422, 'No complete schema.org JobPosting was found at this URL.')
 }
 
 export function isSameOriginRequest(request) {

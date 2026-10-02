@@ -63,13 +63,12 @@ test('JobPosting extraction maps organization, role, location and annual salary'
   )
   assert.equal(scalarSalary.salaryMinimumK, 145)
   assert.equal(scalarSalary.salaryMaximumK, 145)
-  assert.throws(
-    () =>
-      extractJobPosting(
-        { '@type': 'JobPosting', title: 'Engineer' },
-        'https://jobs.example.test/role',
-      ),
-    /hiring organization/,
+  assert.equal(
+    extractJobPosting(
+      { '@type': 'JobPosting', title: 'Engineer' },
+      'https://jobs.example.test/role',
+    ).company,
+    '',
   )
   assert.throws(
     () =>

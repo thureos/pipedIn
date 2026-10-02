@@ -47,7 +47,7 @@ npm run dev
 - Search and work arrangement filters, application list, and interview list.
 - Light and dark themes, responsive layout, keyboard-accessible dialogs, and storage error feedback.
 - JSON export and validated restore in Settings & data. Restore replaces the existing dataset after confirmation.
-- Share an application from its details: copy its posting URL or copy the complete application as Base64 JSON. Receive a Base64 application to add a full copy, or paste a job URL to import schema.org `JobPosting` data for review. Job pages are fetched by the same-origin Node service, not directly by the browser.
+- Share an application from its details: copy its posting URL or copy the complete application as Base64 JSON. Receive a Base64 application or paste a job URL to open the ingested data in the application modal. Review or complete the details and add notes before choosing Save application; closing the modal discards the draft. Base64 shares start in Potential applications. Job pages are fetched by the same-origin Node service, not directly by the browser.
 - Optional Google Drive backup and restore, using an app-private Drive file when configured with a Google OAuth client ID.
 - Optional fictional sample pipeline, available only when the workspace is empty. Delete all applications in Settings to clear it.
 
@@ -79,7 +79,13 @@ Salary minimum and maximum are entered in thousands (for example, `50` displays 
 
 ### Job URL service and security
 
-The browser posts a URL to the same-origin `/api/job-posting` endpoint. The service fetches the HTML, parses JSON-LD, and returns only the extracted `JobPosting` fields; it does not persist URLs, HTML, or application data. The job URL and the service's outbound request are visible to the pipedIn server operator and the target website. Direct browser CORS restrictions no longer apply, though target sites can still deny or rate-limit server requests.
+The browser posts a URL to the same-origin `/api/job-posting` endpoint. The service fetches the HTML, parses embedded JSON-LD or schema.org microdata, and returns only the extracted `JobPosting` fields; it does not persist URLs, HTML, or application data. The job URL and the service's outbound request are visible to the pipedIn server operator and the target website. Direct browser CORS restrictions no longer apply, though target sites can still deny or rate-limit server requests.
+
+The HTML parser handles script attribute variations, multiple JSON-LD blocks, arrays and nested graphs, schema.org type URLs, and local `@id` references across blocks. Malformed blocks and postings without titles do not prevent another usable posting from importing. When multiple postings exist, a matching posting URL is preferred, then a posting with a company name and description. Microdata uses `itemscope`, `itemtype`, `itemprop`, and local `itemref` attributes. Common HTML entities are decoded in imported text. Compressed HTML (gzip, deflate, Brotli) is supported with limits on both compressed and decoded size.
+
+The importer does not execute JavaScript, fetch external JSON-LD contexts, or render pages in a browser. Schema added only after JavaScript runs, RDFa, login walls, and anti-bot pages are not supported. The error message offers manual entry when no usable embedded posting is available. Missing optional data is left for review rather than inferred from prose or the hostname.
+
+If a posting omits its hiring organization name, the importer opens a draft with the company field blank. Enter the company before saving; saved applications still require it.
 
 The fetcher only allows HTTP(S) on standard web ports, rejects private/reserved IP ranges, resolves and pins public DNS addresses, repeats those checks for every redirect, and caps redirects, response size, request time, request-body size, concurrency, and per-IP request rate. The endpoint also requires a same-origin JSON POST and emits no CORS headers. These controls reduce SSRF and resource-exhaustion risk; they do not make an unauthenticated public endpoint abuse-proof. For a public multi-user deployment, add edge-level rate limiting or authentication and network egress controls. The in-process rate limit resets on restart and is not shared across replicas.
 

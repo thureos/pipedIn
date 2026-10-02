@@ -137,31 +137,34 @@ const fs = require('node:fs/promises')
   await page.getByRole('button', { name: 'Receive / ingest' }).click()
   await page.getByLabel('Shared application or job posting URL').fill(shared)
   await page.getByRole('button', { name: 'Receive application' }).click()
-  let imported = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('pipedin.applications.v1')),
+  await page.getByLabel('Opportunity name').waitFor()
+  assert.deepEqual(
+    await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))),
+    stored,
   )
-  imported = imported.find((application) => application.stage === 'potential')
-  assert.equal(imported.url, '')
-  assert.equal(imported.stageHistory.length, 1)
-  assert.equal(imported.stageHistory[0].stage, 'potential')
-  assert.notEqual(imported.stageEnteredAt, '2020-01-01T00:00:00.000Z')
-  const potentialColumn = page
-    .locator('.column')
-    .filter({ has: page.getByRole('heading', { name: 'Potential applications', exact: true }) })
-  await potentialColumn
-    .locator('.application-card')
-    .filter({ hasText: 'Test Company' })
-    .locator('.card-main')
-    .click()
+  await page.getByRole('button', { name: 'Close application', exact: true }).click()
+  assert.deepEqual(
+    await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))),
+    stored,
+  )
+  await page.getByRole('button', { name: 'Receive / ingest' }).click()
+  await page.getByLabel('Shared application or job posting URL').fill(shared)
+  await page.getByRole('button', { name: 'Receive application' }).click()
   await page.getByLabel('Opportunity name').fill('Shared potential')
+  await page.getByLabel('Application link').fill('https://example.com/shared-role')
+  await page.getByLabel('Notes', { exact: true }).fill('Reviewed before saving')
   await page.getByRole('button', { name: 'Save application' }).click()
-  imported = await page.evaluate(() =>
+  const imported = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('pipedin.applications.v1')).find(
       (application) => application.company === 'Shared potential',
     ),
   )
   assert.equal(imported.stage, 'potential')
-  assert.equal(imported.url, '')
+  assert.equal(imported.url, 'https://example.com/shared-role')
+  assert.equal(imported.notes, 'Reviewed before saving')
+  assert.equal(imported.stageHistory.length, 1)
+  assert.equal(imported.stageHistory[0].stage, 'potential')
+  assert.notEqual(imported.stageEnteredAt, '2020-01-01T00:00:00.000Z')
 
   await page.getByRole('button', { name: 'Add application to Completed', exact: true }).click()
   await page.getByLabel('Company name').fill('Other Company')
@@ -201,10 +204,11 @@ const fs = require('node:fs/promises')
     .filter({ hasText: 'Test Company' })
     .dragTo(appliedColumn.locator('.column-line'))
   assert.equal(
-    await page.evaluate(() =>
-      JSON.parse(localStorage.getItem('pipedin.applications.v1')).find(
-        (application) => application.company === 'Test Company',
-      ).stage,
+    await page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem('pipedin.applications.v1')).find(
+          (application) => application.company === 'Test Company',
+        ).stage,
     ),
     'applied',
   )
