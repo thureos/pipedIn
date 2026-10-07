@@ -63,12 +63,13 @@ import {
   reasonLabels,
   blankApplication,
   validateApplications,
+  stampApplication,
   ageLabel,
   isApplicationUrl,
   salaryRangeLabel,
 } from '../domain/applications.js'
 import { encodeApplicationShare, decodeApplicationShare } from '../services/sharing.js'
-import { fetchJobPosting } from '../services/jobPosting.js'
+import { fetchJobPosting, isHtmlPageSource, jobPostingSourceUrl } from '../services/jobPosting.js'
 const store = useApplications()
 const buildId = import.meta.env.VITE_BUILD_ID
 const search = ref(''),
@@ -460,7 +461,7 @@ function openShareReceiver() {
   shareError.value = ''
   shareReceiveModal.value = true
 }
-function sharedApplicationDraft(application) {
+function importSharedApplication(application) {
   const defaults = blankApplication()
   const incoming = {
     ...defaults,
@@ -472,37 +473,45 @@ function sharedApplicationDraft(application) {
     stageHistory: [],
   }
   const [validated] = validateApplications([incoming])
-  return validated
+  const imported = stampApplication(validated, null)
+  const current = JSON.parse(JSON.stringify(store.applications))
+  if (!store.replace([...current, imported]))
+    throw new Error(store.error || 'Unable to save the shared application.')
+}
+async function importJobPosting(url, html = '') {
+  const posting = await fetchJobPosting(url, html)
+  const application = { ...blankApplication(), ...posting, stage: 'applied' }
+  validateApplications([application])
+  shareReceiveModal.value = false
+  await openApplication(application)
+  toast('Job posting imported. Review the details, then save the application.')
 }
 async function receiveApplication() {
   const value = shareInput.value.trim()
   if (!value) {
-    shareError.value = 'Paste a Base64 application share or a job posting URL.'
+    shareError.value = 'Paste a Base64 application share, job posting URL, or page source.'
     return
   }
   shareBusy.value = true
   shareError.value = ''
   try {
     if (isApplicationUrl(value)) {
-      const posting = await fetchJobPosting(value)
-      const application = { ...blankApplication(), ...posting, stage: 'applied' }
-      // Imported metadata is a draft; required fields are enforced when saving.
-      shareReceiveModal.value = false
-      await openApplication(application)
-      toast(
-        posting.company
-          ? 'Job posting imported. Review the details, then save the application.'
-          : 'Job posting imported without a company name. Enter the company, then save.',
-      )
+      await importJobPosting(value)
+    } else if (isHtmlPageSource(value)) {
+      const url = jobPostingSourceUrl(value)
+      if (!url)
+        throw new Error(
+          'Could not find the job page URL in this source. Paste source that includes a canonical URL, Open Graph URL, or JobPosting URL.',
+        )
+      await importJobPosting(url, value)
     } else {
       const decoded = decodeApplicationShare(value)
       const application = decoded?.application ?? decoded
       if (!application || typeof application !== 'object' || Array.isArray(application))
         throw new Error('The shared data must contain one application.')
-      const incoming = sharedApplicationDraft(application)
+      importSharedApplication(application)
       shareReceiveModal.value = false
-      await openApplication(incoming)
-      toast('Shared application received. Review the details, then save the application.')
+      toast('Shared application added to Potential applications.')
     }
   } catch (error) {
     shareError.value = error.message || 'Unable to receive this application.'
@@ -1949,16 +1958,16 @@ onBeforeUnmount(() => {
         <form @submit.prevent="receiveApplication">
           <div class="dialog-body receive-body">
             <label
-              >Shared application or job posting URL<textarea
+              >Application share, job posting URL, or page source<textarea
                 v-model="shareInput"
                 rows="5"
                 autofocus
-                placeholder="Paste Base64 application data or an https:// job posting URL"
+                placeholder="Paste Base64 application data, an https:// job posting URL, or website page source"
               ></textarea>
             </label>
             <p class="receive-note">
-              Base64 shares and job URLs open for review before saving. Job URLs are read for
-              embedded schema.org JobPosting data (JSON-LD or microdata).
+              Base64 shares restore the full application. Job URLs and pasted website source are
+              read for schema.org JobPosting data.
             </p>
             <div v-if="shareError" class="error-banner" role="alert">{{ shareError }}</div>
           </div>

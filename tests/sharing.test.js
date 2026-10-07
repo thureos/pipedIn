@@ -1,7 +1,25 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { encodeApplicationShare, decodeApplicationShare } from '../src/services/sharing.js'
-import { extractJobPosting } from '../src/services/jobPosting.js'
+import {
+  extractJobPosting,
+  isHtmlPageSource,
+  jobPostingSourceUrl,
+} from '../src/services/jobPosting.js'
+
+test('pasted HTML source is recognized and its canonical posting URL is resolved', () => {
+  const source = `<!doctype html>
+    <html><head>
+      <link href="https://jobs.example.test/role?source=page&amp;ref=1" rel="canonical">
+      <script type="application/ld+json">
+        {"@type":"JobPosting","title":"Engineer","url":"https://jobs.example.test/role"}
+      </script>
+    </head><body></body></html>`
+  assert.equal(isHtmlPageSource(source), true)
+  assert.equal(jobPostingSourceUrl(source), 'https://jobs.example.test/role?source=page&ref=1')
+  assert.equal(isHtmlPageSource('export default function App() {}'), false)
+  assert.equal(jobPostingSourceUrl('<html><body>No page URL</body></html>'), '')
+})
 
 test('application share uses Base64 JSON and preserves Unicode fields', () => {
   const application = { company: 'Café 一', title: 'Designer', notes: 'A thoughtful role' }
@@ -13,6 +31,19 @@ test('application share uses Base64 JSON and preserves Unicode fields', () => {
     application,
   )
   assert.throws(() => decodeApplicationShare('not an application share'), /valid Base64/)
+  assert.throws(
+    () => decodeApplicationShare('const application = { company: "Example" }'),
+    /source code, not a Base64 application share/,
+  )
+
+  const sourceCode = 'export default function App() { return "Example" }'
+  const sourceCodeBytes = new TextEncoder().encode(sourceCode)
+  let binary = ''
+  for (const byte of sourceCodeBytes) binary += String.fromCharCode(byte)
+  assert.throws(
+    () => decodeApplicationShare(btoa(binary)),
+    /source code, not a Base64 application share/,
+  )
 })
 
 test('JobPosting extraction maps organization, role, location and annual salary', () => {

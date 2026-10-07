@@ -195,13 +195,13 @@ export function extractJobPosting(jsonLd, sourceUrl) {
   }
 }
 
-export async function fetchJobPosting(url) {
+export async function fetchJobPosting(url, html = '') {
   let response
   try {
     response = await fetch('/api/job-posting', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify(html.trim() ? { url, html } : { url }),
     })
   } catch {
     throw new Error('The job import service is unavailable. Try again later.')
@@ -210,8 +210,65 @@ export async function fetchJobPosting(url) {
   try {
     result = await response.json()
   } catch {
+    if (response.status === 413)
+      throw new Error(
+        'The upload was rejected because it is too large. Paste only the job posting section of the page source, or add the application manually.',
+      )
     throw new Error('The job import service returned an invalid response.')
   }
   if (!response.ok) throw new Error(result.error || 'Unable to import this job posting.')
   return result.application
+}
+
+function sourceAttribute(tag, name) {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'))
+  return decodeHTML(match?.[1] ?? match?.[2] ?? match?.[3] ?? '')
+}
+
+export function isHtmlPageSource(value) {
+  return /<(?:!doctype\s+html|html\b|head\b|body\b|meta\b|link\b|script\b|div\b)/i.test(value)
+}
+
+export function jobPostingSourceUrl(html) {
+  const tags = html.match(/<(?:link|meta)\b[^>]*>/gi) || []
+  for (const tag of tags) {
+    const rel = sourceAttribute(tag, 'rel').toLowerCase().split(/\s+/)
+    const property = (
+      sourceAttribute(tag, 'property') || sourceAttribute(tag, 'name')
+    ).toLowerCase()
+    const candidate =
+      (/^<link\b/i.test(tag) && rel.includes('canonical') && sourceAttribute(tag, 'href')) ||
+      (['og:url', 'twitter:url'].includes(property) && sourceAttribute(tag, 'content'))
+    if (candidate && isApplicationUrl(candidate)) return new URL(candidate).href
+  }
+
+  const scripts = html.matchAll(
+    /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script\s*>/gi,
+  )
+  for (const script of scripts) {
+    try {
+      const pending = [JSON.parse(script[1])]
+      let inspected = 0
+      while (pending.length && inspected++ < 10000) {
+        const value = pending.pop()
+        if (!value || typeof value !== 'object') continue
+        if (
+          asArray(value['@type']).some(
+            (type) => typeof type === 'string' && /(?:^|\/)JobPosting\/?$/.test(type),
+          )
+        ) {
+          const candidates = asArray(value.url)
+          const url = candidates.find(
+            (candidate) => typeof candidate === 'string' && isApplicationUrl(candidate),
+          )
+          if (url) return new URL(url).href
+        }
+        for (const child of Object.values(value))
+          if (child && typeof child === 'object') pending.push(child)
+      }
+    } catch {
+      continue
+    }
+  }
+  return ''
 }

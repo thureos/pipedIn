@@ -40,22 +40,16 @@ test('reorders applications within their visible column without changing records
   const accepted = { ...application(), id: 'accepted', stage: 'accepted' }
   const items = [first, unrelated, second, declined, accepted]
   const reordered = reorderApplications(items, 'second', 'first', 'before')
-  assert.deepEqual(reordered.map((item) => item.id), [
-    'second',
-    'unrelated',
-    'first',
-    'declined',
-    'accepted',
-  ])
-  assert.deepEqual(reorderApplications(items, 'declined', 'accepted', 'after').map((i) => i.id), [
-    'first',
-    'unrelated',
-    'second',
-    'accepted',
-    'declined',
-  ])
+  assert.deepEqual(
+    reordered.map((item) => item.id),
+    ['second', 'unrelated', 'first', 'declined', 'accepted'],
+  )
+  assert.deepEqual(
+    reorderApplications(items, 'declined', 'accepted', 'after').map((i) => i.id),
+    ['first', 'unrelated', 'second', 'accepted', 'declined'],
+  )
   assert.equal(reorderApplications(items, 'first', 'unrelated'), items)
-  assert.deepEqual(reordered[0], first)
+  assert.deepEqual(reordered[2], first)
 })
 test('valid backup preserves interview ratings, outcome reasons and custom fields', () => {
   const item = application()

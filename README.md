@@ -47,7 +47,7 @@ npm run dev
 - Search and work arrangement filters, application list, and interview list.
 - Light and dark themes, responsive layout, keyboard-accessible dialogs, and storage error feedback.
 - JSON export and validated restore in Settings & data. Restore replaces the existing dataset after confirmation.
-- Share an application from its details: copy its posting URL or copy the complete application as Base64 JSON. Receive a Base64 application or paste a job URL to open the ingested data in the application modal. Review or complete the details and add notes before choosing Save application; closing the modal discards the draft. Base64 shares start in Potential applications. Job pages are fetched by the same-origin Node service, not directly by the browser.
+- Share an application from its details: copy its posting URL or copy the complete application as Base64 JSON. Receive a Base64 application, paste a job URL, or paste website page source to open the ingested data in the application modal. Pasted source must include a canonical URL, Open Graph URL, or schema.org JobPosting URL. Review or complete the details and add notes before choosing Save application; closing the modal discards the draft. Base64 shares start in Potential applications. Job pages are fetched by the same-origin Node service, not directly by the browser.
 - Optional Google Drive backup and restore, using an app-private Drive file when configured with a Google OAuth client ID.
 - Optional fictional sample pipeline, available only when the workspace is empty. Delete all applications in Settings to clear it.
 

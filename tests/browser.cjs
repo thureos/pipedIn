@@ -135,36 +135,70 @@ const fs = require('node:fs/promises')
     return btoa(binary)
   })
   await page.getByRole('button', { name: 'Receive / ingest' }).click()
-  await page.getByLabel('Shared application or job posting URL').fill(shared)
+  await page.getByLabel('Application share, job posting URL, or page source').fill(shared)
   await page.getByRole('button', { name: 'Receive application' }).click()
-  await page.getByLabel('Opportunity name').waitFor()
-  assert.deepEqual(
-    await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))),
-    stored,
+  let imported = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('pipedin.applications.v1')),
   )
-  await page.getByRole('button', { name: 'Close application', exact: true }).click()
-  assert.deepEqual(
-    await page.evaluate(() => JSON.parse(localStorage.getItem('pipedin.applications.v1'))),
-    stored,
-  )
-  await page.getByRole('button', { name: 'Receive / ingest' }).click()
-  await page.getByLabel('Shared application or job posting URL').fill(shared)
-  await page.getByRole('button', { name: 'Receive application' }).click()
+  imported = imported.find((application) => application.stage === 'potential')
+  assert.equal(imported.url, '')
+  assert.equal(imported.stageHistory.length, 1)
+  assert.equal(imported.stageHistory[0].stage, 'potential')
+  assert.notEqual(imported.stageEnteredAt, '2020-01-01T00:00:00.000Z')
+  const potentialColumn = page
+    .locator('.column')
+    .filter({ has: page.getByRole('heading', { name: 'Potential applications', exact: true }) })
+  await potentialColumn
+    .locator('.application-card')
+    .filter({ hasText: 'Test Company' })
+    .locator('.card-main')
+    .click()
   await page.getByLabel('Opportunity name').fill('Shared potential')
-  await page.getByLabel('Application link').fill('https://example.com/shared-role')
-  await page.getByLabel('Notes', { exact: true }).fill('Reviewed before saving')
   await page.getByRole('button', { name: 'Save application' }).click()
-  const imported = await page.evaluate(() =>
+  imported = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('pipedin.applications.v1')).find(
       (application) => application.company === 'Shared potential',
     ),
   )
   assert.equal(imported.stage, 'potential')
-  assert.equal(imported.url, 'https://example.com/shared-role')
-  assert.equal(imported.notes, 'Reviewed before saving')
-  assert.equal(imported.stageHistory.length, 1)
-  assert.equal(imported.stageHistory[0].stage, 'potential')
-  assert.notEqual(imported.stageEnteredAt, '2020-01-01T00:00:00.000Z')
+  assert.equal(imported.url, '')
+
+  const pageSource = `<html><head>
+    <link rel="canonical" href="https://jobs.example.test/source-role">
+    <script type="application/ld+json">{"@type":"JobPosting","title":"Source role"}</script>
+  </head></html>`
+  let sourceRequest
+  await page.route('**/api/job-posting', async (route) => {
+    sourceRequest = route.request().postDataJSON()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        application: {
+          company: 'Source Company',
+          title: 'Source role',
+          location: '',
+          business: '',
+          workplace: 'Onsite',
+          employmentType: '',
+          url: 'https://jobs.example.test/source-role',
+          notes: '',
+          perks: [],
+          salaryMinimumK: null,
+          salaryMaximumK: null,
+        },
+      }),
+    })
+  })
+  await page.getByRole('button', { name: 'Receive / ingest' }).click()
+  await page.getByLabel('Application share, job posting URL, or page source').fill(pageSource)
+  await page.getByRole('button', { name: 'Receive application' }).click()
+  assert.equal(sourceRequest.url, 'https://jobs.example.test/source-role')
+  assert.equal(sourceRequest.html, pageSource)
+  assert.equal(await page.getByLabel('Company name').inputValue(), 'Source Company')
+  assert.equal(await page.getByLabel('Job title').inputValue(), 'Source role')
+  await page.getByRole('button', { name: 'Close application' }).click()
+  await page.unroute('**/api/job-posting')
 
   await page.getByRole('button', { name: 'Add application to Completed', exact: true }).click()
   await page.getByLabel('Company name').fill('Other Company')

@@ -31,15 +31,18 @@ test('malformed, unrelated and incomplete blocks do not hide a later usable post
   assert.equal(parseJobPostingHtml(html, url).company, 'Example')
   assert.throws(
     () => parseJobPostingHtml(script({ '@type': 'JobPosting' }), url),
-    /required job title/,
+    /missing a job title/,
   )
 })
 
 test('commented-out markup and script-like strings are not treated as actual schema scripts', () => {
-  assert.throws(() => parseJobPostingHtml(`<!-- ${script(job)} -->`, url), /No complete schema/)
+  assert.throws(
+    () => parseJobPostingHtml(`<!-- ${script(job)} -->`, url),
+    /couldn’t find job details/,
+  )
   assert.throws(
     () => parseJobPostingHtml(`<script>const x = '${script(job)}'</script>`, url),
-    /No complete schema/,
+    /couldn’t find job details/,
   )
 })
 

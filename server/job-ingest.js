@@ -8,8 +8,10 @@ import { extractJobPosting } from '../src/services/jobPosting.js'
 import { embeddedJobData } from './structured-data.js'
 
 const MAX_URL_LENGTH = 2048
-const MAX_BODY_BYTES = 4096
 const MAX_HTML_BYTES = 1_048_576
+const MAX_SOURCE_BYTES = 10 * MAX_HTML_BYTES
+// JSON escaping can expand each source byte to six bytes.
+const MAX_BODY_BYTES = 6 * MAX_SOURCE_BYTES + 4096
 const MAX_REDIRECTS = 3
 const FETCH_TIMEOUT_MS = 7000
 const MAX_TOTAL_FETCH_MS = 12_000
@@ -170,6 +172,16 @@ export function readHtmlResponse(response) {
   })
 }
 
+export function jobPageStatusMessage(status) {
+  if (status === 401 || status === 403)
+    return `This site blocked the import (HTTP ${status}). It may require sign-in or block automated access. Open the job page in your browser and paste its page source below, or add the application manually.`
+  if (status === 404 || status === 410)
+    return 'This job page is no longer available. Check the URL, or add the application manually.'
+  if (status === 429)
+    return 'This job site is receiving too many requests. Wait a little and try again, or paste the page source.'
+  return `The job site could not load the page (HTTP ${status}). Try again later, paste the page source, or add the application manually.`
+}
+
 function requestPage(target, address, timeoutMs = FETCH_TIMEOUT_MS) {
   const transport = target.protocol === 'https:' ? https : http
   const hostname = target.hostname.replace(/^\[|\]$/g, '')
@@ -207,7 +219,7 @@ function requestPage(target, address, timeoutMs = FETCH_TIMEOUT_MS) {
       }
       if (status !== 200) {
         response.destroy()
-        finish(new ServiceError(502, `The job page returned HTTP ${status}.`))
+        finish(new ServiceError(502, jobPageStatusMessage(status)))
         return
       }
       const type = String(response.headers['content-type'] || '').toLowerCase()
@@ -258,19 +270,27 @@ export async function fetchPublicHtml(
     }
     return fetchPublicHtml(next, { resolver, request }, redirects + 1, deadline)
   }
+  if (response.status !== 200) throw new ServiceError(502, jobPageStatusMessage(response.status))
   return response.html
 }
 
 export function parseJobPostingHtml(html, sourceUrl) {
-  if (typeof html !== 'string' || Buffer.byteLength(html) > MAX_HTML_BYTES)
-    throw new ServiceError(413, 'The job page is too large to import.')
+  if (typeof html !== 'string' || Buffer.byteLength(html) > MAX_SOURCE_BYTES)
+    throw new ServiceError(
+      413,
+      'The pasted page source is larger than 10 MB. Paste only the job posting section or add the application manually.',
+    )
   try {
     return extractJobPosting(embeddedJobData(html), sourceUrl)
   } catch (error) {
-    if (error.message.includes('required')) throw new ServiceError(422, error.message)
+    if (error.message.includes('required'))
+      throw new ServiceError(
+        422,
+        'The page’s job details are missing a job title. You can add the application manually.',
+      )
     throw new ServiceError(
       422,
-      'No complete schema.org JobPosting was found in the page HTML. The site may require JavaScript or block automated access. You can add the application manually.',
+      'We couldn’t find job details in this page. The site may load them after the page opens. Try pasting the page source from your browser, or add the application manually.',
     )
   }
 }
@@ -306,7 +326,12 @@ function readJsonBody(request) {
       size += chunk.length
       if (size > MAX_BODY_BYTES) {
         request.resume()
-        finish(new ServiceError(413, 'The request body is too large.'))
+        finish(
+          new ServiceError(
+            413,
+            'The import upload is too large. Paste only the job posting section or add the application manually.',
+          ),
+        )
       } else chunks.push(chunk)
     })
     request.on('end', () => {
@@ -350,7 +375,10 @@ export function createJobIngestHandler({
       return fail(415, 'Send the job URL as JSON.')
     if (Number(request.headers['content-length']) > MAX_BODY_BYTES) {
       request.resume()
-      return fail(413, 'The request body is too large.')
+      return fail(
+        413,
+        'The import upload is too large. Paste only the job posting section or add the application manually.',
+      )
     }
 
     const client = request.socket.remoteAddress || 'unknown'
@@ -375,16 +403,21 @@ export function createJobIngestHandler({
           !body ||
           typeof body !== 'object' ||
           Array.isArray(body) ||
-          Object.keys(body).length !== 1 ||
+          Object.keys(body).some((key) => !['url', 'html'].includes(key)) ||
+          (body.html !== undefined && (typeof body.html !== 'string' || !body.html.trim())) ||
           typeof body.url !== 'string'
         )
           throw new ServiceError(400, 'Send one job URL.')
+        parseTargetUrl(body.url)
         let html
         try {
-          html = await fetcher(body.url)
+          html = body.html === undefined ? await fetcher(body.url) : body.html
         } catch (error) {
           if (error instanceof ServiceError) throw error
-          throw new ServiceError(502, 'Could not safely read this job page.')
+          throw new ServiceError(
+            502,
+            'We couldn’t connect to this job site. Try again, paste the page source, or add the application manually.',
+          )
         }
         const application = parseJobPostingHtml(html, body.url)
         sendJson(response, 200, { application })
