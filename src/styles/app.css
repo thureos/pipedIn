@@ -709,10 +709,14 @@ h1 {
   border-color: var(--accent);
 }
 .application-card.drop-before {
-  box-shadow: inset 0 3px var(--accent), 0 2px 3px #291d3d18;
+  box-shadow:
+    inset 0 3px var(--accent),
+    0 2px 3px #291d3d18;
 }
 .application-card.drop-after {
-  box-shadow: inset 0 -3px var(--accent), 0 2px 3px #291d3d18;
+  box-shadow:
+    inset 0 -3px var(--accent),
+    0 2px 3px #291d3d18;
 }
 .card-main {
   padding: 15px 14px 0;
@@ -1103,16 +1107,22 @@ h1 {
 }
 .dialog-tabs {
   display: flex;
+  align-items: center;
   gap: 25px;
   border-bottom: 1px solid var(--border);
   padding: 0 28px;
 }
-.dialog-tabs button {
+.dialog-tabs .card-preferences {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0;
+}
+.dialog-tabs > button {
   padding: 13px 0;
   font-size: 12px;
   border-bottom: 2px solid transparent;
 }
-.dialog-tabs button.active {
+.dialog-tabs > button.active {
   color: var(--accent);
   border-color: var(--accent);
 }
@@ -1612,7 +1622,24 @@ h1 {
     font-size: 24px;
   }
   .dialog-tabs {
+    gap: 12px;
     padding: 0 20px;
+  }
+  .dialog-tabs .card-preferences {
+    gap: 4px;
+  }
+  .dialog-tabs .color-swatch {
+    flex-basis: 22px;
+    width: 22px;
+    height: 22px;
+  }
+  .dialog-tabs .color-reset {
+    width: 24px;
+    height: 24px;
+  }
+  .dialog-tabs .star-toggle {
+    width: 26px;
+    height: 26px;
   }
   .form-grid {
     grid-template-columns: 1fr;
@@ -1935,6 +1962,7 @@ h1 {
 .color-swatch {
   display: grid;
   place-items: center;
+  flex: 0 0 26px;
   width: 26px;
   height: 26px;
   border-radius: 50%;

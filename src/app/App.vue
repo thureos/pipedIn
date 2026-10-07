@@ -297,6 +297,15 @@ function closeModal() {
   modal.value = false
   previousFocus?.focus()
 }
+async function addApplicationManually() {
+  const value = shareInput.value.trim()
+  let url = ''
+  if (isApplicationUrl(value)) url = value
+  else if (isHtmlPageSource(value)) url = jobPostingSourceUrl(value) || ''
+  shareReceiveModal.value = false
+  shareError.value = ''
+  await openApplication({ ...blankApplication(), url, stage: 'applied' })
+}
 function save() {
   if (!stages.some((stage) => stage.id === draft.value.stage)) {
     tab.value = 'details'
@@ -745,7 +754,6 @@ function safeUrl(value) {
 }
 function keydown(event) {
   if (!modal.value) return
-  if (event.key === 'Escape') closeModal()
   if (event.key === 'Tab') {
     const elements = [
       ...document.querySelectorAll(
@@ -1524,7 +1532,7 @@ onBeforeUnmount(() => {
       </section>
     </main>
 
-    <div v-if="modal" class="modal-backdrop" @mousedown.self="closeModal">
+    <div v-if="modal" class="modal-backdrop">
       <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
         <div class="dialog-header">
           <div>
@@ -1571,18 +1579,32 @@ onBeforeUnmount(() => {
             >
               Interviews <span>{{ draft.interviews.length }}</span>
             </button>
+            <CardPreferences
+              :color="draft.color"
+              :starred="draft.starred"
+              :company="draft.company || 'application'"
+              @change="Object.assign(draft, $event)"
+            />
           </div>
           <div class="dialog-body">
             <div v-show="tab === 'details'" class="form-grid">
-              <div class="full">
-                <div class="field-heading">Card color & star</div>
-                <CardPreferences
-                  :color="draft.color"
-                  :starred="draft.starred"
-                  :company="draft.company || 'application'"
-                  @change="Object.assign(draft, $event)"
-                />
-              </div>
+              <label class="full"
+                >{{ draft.stage === 'potential' ? 'Application link' : 'Job posting URL' }}
+                <div class="url-field">
+                  <input
+                    v-model="draft.url"
+                    :required="potentialUrlRequired"
+                    type="url"
+                    placeholder="https://…"
+                  /><a
+                    v-if="safeUrl(draft.url)"
+                    :href="safeUrl(draft.url)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open job posting"
+                    ><ExternalLink :size="17"
+                  /></a></div
+              ></label>
               <label
                 >{{ draft.stage === 'potential' ? 'Opportunity name' : 'Company name' }}
                 <span>*</span
@@ -1699,23 +1721,6 @@ onBeforeUnmount(() => {
                   </p>
                 </div>
               </template>
-              <label class="full"
-                >{{ draft.stage === 'potential' ? 'Application link' : 'Job posting URL' }}
-                <div class="url-field">
-                  <input
-                    v-model="draft.url"
-                    :required="potentialUrlRequired"
-                    type="url"
-                    placeholder="https://…"
-                  /><a
-                    v-if="safeUrl(draft.url)"
-                    :href="safeUrl(draft.url)"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Open job posting"
-                    ><ExternalLink :size="17"
-                  /></a></div
-              ></label>
               <template v-if="draft.stage !== 'potential'">
                 <fieldset class="full perks-field">
                   <legend>Perks & benefits</legend>
@@ -1931,11 +1936,7 @@ onBeforeUnmount(() => {
         </form>
       </section>
     </div>
-    <div
-      v-if="shareReceiveModal"
-      class="modal-backdrop"
-      @mousedown.self="shareReceiveModal = false"
-    >
+    <div v-if="shareReceiveModal" class="modal-backdrop">
       <section
         class="dialog receive-dialog"
         role="dialog"
@@ -1974,7 +1975,15 @@ onBeforeUnmount(() => {
           <div class="dialog-footer">
             <button type="button" class="secondary" @click="shareReceiveModal = false">
               Cancel</button
-            ><button class="primary" type="submit" :disabled="shareBusy">
+            ><button
+              v-if="shareError"
+              type="button"
+              class="secondary"
+              @click="addApplicationManually"
+            >
+              Add manually
+            </button>
+            <button class="primary" type="submit" :disabled="shareBusy">
               <LoaderCircle v-if="shareBusy" class="drive-spinner" :size="15" /><ClipboardPaste
                 v-else
                 :size="15"
