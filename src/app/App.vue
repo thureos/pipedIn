@@ -47,8 +47,13 @@ import CardPreferences from '../components/CardPreferences.vue'
 import { useApplications } from '../stores/applications.js'
 import { applicationsCsv } from '../utils/export.js'
 import {
-  saveToGoogleDrive,
-  restoreFromGoogleDrive,
+  addCalendarDays,
+  paginateWorkSearchWeeks,
+  workSearchWeeks as buildWorkSearchWeeks,
+} from '../utils/workSearch.js'
+import { addMissingApplications } from '../utils/sync.js'
+import {
+  syncToGoogleDrive,
   googleDriveConfigured,
   googleDriveConnected,
   disconnectGoogleDrive,
@@ -100,7 +105,6 @@ const printLog = ref(null),
   workSearchName = ref(''),
   workSearchStart = ref(new Date().toISOString().slice(0, 10)),
   workSearchWeeks = ref(1),
-  workSearchRequired = ref(3),
   privacyBlur = ref(false),
   driveConnected = ref(false),
   driveBusy = ref(false),
@@ -528,60 +532,24 @@ async function receiveApplication() {
     shareBusy.value = false
   }
 }
-async function saveDriveBackup() {
-  clearTimeout(driveMenuTimer)
+async function syncDrive() {
+  if (driveBusy.value) return
   driveBusy.value = true
-  driveMenuNoticeType.value = ''
-  driveMenuNotice.value = 'Saving backup…'
   driveMessageType.value = ''
-  driveMessage.value = 'Saving backup to Google Drive…'
+  driveMessage.value = 'Syncing to Google…'
   try {
-    const file = await saveToGoogleDrive(store.applications)
+    const result = await syncToGoogleDrive(store.applications)
+    // Read current local state after the request to preserve edits made during sync.
+    const next = addMissingApplications(store.applications, result.applications)
+    const received = next.length - store.applications.length
+    if (!store.replace(next)) throw new Error(store.error)
     driveConnected.value = true
     driveMessageType.value = 'success'
-    driveMessage.value = `Backup saved at ${new Date(file.modifiedTime || Date.now()).toLocaleString()}.`
-    driveMenuNoticeType.value = 'success'
-    driveMenuNotice.value = 'Backup saved'
-    toast('Google Drive backup saved.')
-  } catch (error) {
-    driveMessageType.value = 'error'
-    driveMessage.value = error.message || 'Unable to save the Google Drive backup.'
-    driveMenuNoticeType.value = 'error'
-    driveMenuNotice.value = 'Save failed'
+    driveMessage.value = `Synced: ${result.added} added to Google, ${received} added to this device.`
     toast(driveMessage.value)
-  } finally {
-    driveBusy.value = false
-    driveMenuTimer = setTimeout(() => {
-      driveMenuNotice.value = ''
-      driveMenuNoticeType.value = ''
-    }, 5000)
-  }
-}
-async function restoreDriveBackup() {
-  driveBusy.value = true
-  driveMessageType.value = ''
-  driveMessage.value = 'Restoring backup from Google Drive…'
-  try {
-    const backup = await restoreFromGoogleDrive()
-    const next = validateApplications(backup.applications)
-    if (
-      !store.applications.length ||
-      confirm(
-        `Replace your ${store.applications.length} applications with ${next.length} applications from Google Drive? Export a backup first if needed.`,
-      )
-    ) {
-      if (store.replace(next)) {
-        driveMessageType.value = 'success'
-        driveMessage.value = 'Backup restored from Google Drive.'
-        toast('Google Drive backup restored.')
-      }
-    } else {
-      driveMessage.value = 'Restore cancelled.'
-    }
-    driveConnected.value = true
   } catch (error) {
     driveMessageType.value = 'error'
-    driveMessage.value = error.message || 'Unable to restore the Google Drive backup.'
+    driveMessage.value = error.message || 'Unable to sync to Google.'
     toast(driveMessage.value)
   } finally {
     driveBusy.value = false
@@ -609,7 +577,6 @@ function makeWorkSearchRow() {
     notHiring: false,
     startDate: '',
     applicationFiled: false,
-    resultOther: '',
   }
 }
 function workSearchRowFromApplication(application) {
@@ -621,14 +588,9 @@ function workSearchRowFromApplication(application) {
     cityStateZip: application.location,
     contactOther: application.url,
     applicationFiled: true,
-    resultOther: stages.find((stage) => stage.id === application.stage)?.name || '',
   }
 }
-function addDays(date, days) {
-  const next = new Date(`${date}T12:00:00`)
-  next.setDate(next.getDate() + days)
-  return next.toISOString().slice(0, 10)
-}
+const addDays = addCalendarDays
 function shortDate(date) {
   return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
     month: 'short',
@@ -646,16 +608,23 @@ function escapeHtml(value) {
 function workSearchInput(value, type = 'text', placeholder = '') {
   return `<input type="${type}" value="${escapeHtml(value)}"${placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : ''}>`
 }
+function workSearchField(value, label, className = '') {
+  return `<span class="work-search-field-label">${escapeHtml(label)}</span><div class="work-search-value ${className}" contenteditable="true">${escapeHtml(value)}</div>`
+}
 function workSearchRowsHtml(rows) {
   return rows
     .map(
-      (row) =>
-        `<tr><td><span>Date of Activity</span>${workSearchInput(row.date, 'date')}<span>Work Search Activity</span><textarea>${escapeHtml(row.activity)}</textarea><span>Type of Job</span>${workSearchInput('')}</td><td><span>Name</span>${workSearchInput(row.employer)}<span>Address</span>${workSearchInput(row.address)}<span>City, State, Zip Code</span>${workSearchInput(row.cityStateZip)}<span>Area Code + Phone #</span>${workSearchInput(row.phone)}</td><td><span>Person Contacted</span>${workSearchInput(row.person)}<span>By Mail</span>${workSearchInput(row.mail)}<span>Email</span>${workSearchInput(row.email)}<span>Fax #</span>${workSearchInput(row.fax)}${workSearchInput(row.contactOther, 'text', 'Other')}</td><td><label><input type="checkbox"${row.hired ? ' checked' : ''}> Hired</label><label><input type="checkbox"${row.notHiring ? ' checked' : ''}> Not hiring</label><span>Start date</span>${workSearchInput(row.startDate, 'date')}<label><input type="checkbox"${row.applicationFiled ? ' checked' : ''}> Application filed</label>${workSearchInput(row.resultOther, 'text', 'Other')}</td></tr>`,
+      (row) => `<tr>
+    <td>${workSearchField(row.date ? shortDate(row.date) : '', 'Date of activity')}${workSearchField(row.activity, 'Work search activity', 'activity')}${workSearchField('', 'Type of job')}</td>
+    <td>${workSearchField(row.employer, 'Employer / agency')}${workSearchField(row.address, 'Address')}${workSearchField(row.cityStateZip, 'City, state, ZIP code')}${workSearchField(row.phone, 'Phone')}</td>
+    <td>${workSearchField(row.person, 'Person contacted')}${workSearchField(row.email, 'Email')}${workSearchField(row.mail || row.fax, 'Mail / fax')}${workSearchField(row.contactOther, 'Website / other contact', 'contact-url')}</td>
+    <td><label><input type="checkbox"${row.hired ? ' checked' : ''}> Hired</label><label><input type="checkbox"${row.notHiring ? ' checked' : ''}> Not hiring</label>${workSearchField(row.startDate, 'Start date')}<label><input type="checkbox"${row.applicationFiled ? ' checked' : ''}> Application filed</label></td>
+  </tr>`,
     )
     .join('')
 }
 function workSearchPageHtml(week, index, total, log) {
-  return `<article class="work-search-page"><h1>The Texas Workforce Commission Work Search Activity Log</h1><div class="work-search-meta"><label>Name:${workSearchInput(log.name)}</label><label>Week of:${workSearchInput(shortDate(week.start), 'text')}</label><label>to${workSearchInput(shortDate(addDays(week.start, 6)), 'text')}</label><label>Social Security #:${workSearchInput(log.ssn)}</label><label>Number of Required Searches:${workSearchInput(log.required, 'number')}</label></div><p class="work-search-note">If you are still unemployed after eight weeks of benefits, you should reduce your salary requirement and look at more job openings.</p><table><thead><tr><th>Date, Description of Work Search</th><th>Name, Location and Telephone Number of Employer/Service/Agency</th><th>Contact Information</th><th>Results</th></tr></thead><tbody>${workSearchRowsHtml(week.rows)}</tbody></table><footer>Keep this form for your records. Submit a copy to TWC only if requested.</footer><small>BN900E (10-12-23) · Week ${index + 1} of ${total}</small></article>`
+  return `<article class="work-search-page"><h1>The Texas Workforce Commission Work Search Activity Log</h1><div class="work-search-meta"><label>Name:${workSearchInput(log.name)}</label><label>Week of:${workSearchInput(shortDate(week.start), 'text')}</label><label>to${workSearchInput(shortDate(addDays(week.start, 6)), 'text')}</label><label>Social Security #:${workSearchInput(log.ssn)}</label><span class="work-search-required">Required Searches<strong>2</strong></span></div><p class="work-search-note">If you are still unemployed after eight weeks of benefits, you should reduce your salary requirement and look at more job openings.</p><table><thead><tr><th>Date, Description of Work Search</th><th>Name, Location and Telephone Number of Employer/Service/Agency</th><th>Contact Information</th><th>Results</th></tr></thead><tbody>${workSearchRowsHtml(week.rows)}</tbody></table><footer>Keep this form for your records. Submit a copy to TWC only if requested.</footer><small>BN900E (10-12-23) · Week ${week.weekNumber} · Page ${week.pageNumber} of ${week.pageCount}</small></article>`
 }
 function openWorkSearchTab(log) {
   const tab = window.open('', '_blank')
@@ -689,27 +658,28 @@ function openWorkSearchTab(log) {
   })
 }
 function generateWorkSearchLog() {
-  const weeks = Math.min(52, Math.max(1, Number(workSearchWeeks.value) || 1))
-  workSearchWeeks.value = weeks
+  if (!workSearchStart.value) {
+    toast('Choose a starting date.')
+    return
+  }
+  const weeks = buildWorkSearchWeeks(
+    store.applications,
+    workSearchStart.value,
+    workSearchWeeks.value,
+  )
+  workSearchWeeks.value = weeks.length
   const log = {
     name: workSearchName.value,
-    ssn: '',
-    required: workSearchRequired.value,
-    weeks: Array.from({ length: weeks }, (_, index) => {
-      const start = addDays(workSearchStart.value, index * 7)
-      const end = addDays(start, 6)
-      const applications = store.applications
-        .filter((application) => application.date >= start && application.date <= end)
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .slice(0, 5)
-      return {
+    ssn: workSearchSsn.value,
+    weeks: paginateWorkSearchWeeks(
+      weeks.map(({ start, applications }) => ({
         start,
         rows: [
           ...applications.map(workSearchRowFromApplication),
-          ...Array.from({ length: 5 - applications.length }, makeWorkSearchRow),
+          ...Array.from({ length: Math.max(0, 5 - applications.length) }, makeWorkSearchRow),
         ],
-      }
-    }),
+      })),
+    ),
   }
   printLog.value = structuredClone(log)
   openWorkSearchTab(log)
@@ -1026,9 +996,7 @@ onBeforeUnmount(() => {
                 </summary>
                 <div class="data-menu-panel">
                   <button @click="importInput.click()">
-                    <FileJson :size="15" /> From device <small>JSON backup</small></button
-                  ><button class="data-menu-testing" @click="restoreDriveBackup">
-                    <Cloud :size="15" /> From Google Drive <small>Testing phase · test users</small>
+                    <FileJson :size="15" /> From device <small>JSON backup</small>
                   </button>
                 </div>
               </details>
@@ -1040,14 +1008,13 @@ onBeforeUnmount(() => {
                   <button @click="exportData">
                     <FileJson :size="15" /> Download JSON <small>Complete backup</small></button
                   ><button @click="exportCsv">
-                    <FileSpreadsheet :size="15" /> Download CSV
-                    <small>Spreadsheet export</small></button
-                  ><button class="data-menu-testing" @click="saveDriveBackup">
-                    <Cloud :size="15" /> Save to Google Drive
-                    <small>Testing phase · test users</small>
+                    <FileSpreadsheet :size="15" /> Download CSV <small>Spreadsheet export</small>
                   </button>
                 </div>
               </details>
+              <button class="secondary" :disabled="driveBusy" @click="syncDrive">
+                <Cloud :size="15" /> {{ driveBusy ? 'Syncing…' : 'Sync to Google' }}
+              </button>
             </div>
             <div v-if="filterOpen" class="filter-row">
               <label
@@ -1376,20 +1343,19 @@ onBeforeUnmount(() => {
             </section>
             <section class="settings-card">
               <Cloud :size="27" />
-              <h2>Google Drive backup</h2>
+              <h2>Google sync</h2>
               <p v-if="!googleDriveConfigured()">
                 Google Drive is not configured for this deployment. Add a Google OAuth client ID to
                 enable it.
               </p>
               <template v-else
                 ><p>
-                  Your data is sent to Google Drive only when you choose to save or restore a
-                  backup. pipedIn does not keep a server copy.
+                  Sync adds missing applications to Google Drive and this device. Existing
+                  applications are never overwritten or deleted. pipedIn does not keep a server
+                  copy.
                 </p>
-                <button class="secondary" :disabled="driveBusy" @click="saveDriveBackup">
-                  <Cloud :size="16" /> {{ driveBusy ? 'Working…' : 'Save backup to Drive' }}</button
-                ><button class="secondary" :disabled="driveBusy" @click="restoreDriveBackup">
-                  <Upload :size="16" /> Restore from Drive</button
+                <button class="secondary" :disabled="driveBusy" @click="syncDrive">
+                  <Cloud :size="16" /> {{ driveBusy ? 'Syncing…' : 'Sync to Google' }}</button
                 ><span
                   v-if="driveMessage"
                   class="drive-status"
@@ -1432,8 +1398,9 @@ onBeforeUnmount(() => {
         <FileText :size="27" />
         <h2>Work search activity log</h2>
         <p>
-          Make a printable Texas Workforce Commission-style log with one page for each week. Choose
-          up to 52 weeks, fill in the rows, then print or save it as a PDF.
+          Make a printable Texas Workforce Commission-style log with all applications from Sunday
+          through Saturday. The selected date uses the Sunday of that week. Choose up to 52 weeks,
+          then print or save as a PDF.
         </p>
         <div class="work-search-form">
           <label>Name<input v-model="workSearchName" placeholder="Your name" /></label
@@ -1442,15 +1409,9 @@ onBeforeUnmount(() => {
               v-model="workSearchSsn"
               inputmode="numeric"
               placeholder="XXX-XX-XXXX" /></label
-          ><label>Week starting<input v-model="workSearchStart" type="date" /></label
+          ><label>Starting date<input v-model="workSearchStart" type="date" /></label
           ><label
-            >Weeks<input v-model.number="workSearchWeeks" type="number" min="1" max="52" /></label
-          ><label
-            >Required searches<input
-              v-model.number="workSearchRequired"
-              type="number"
-              min="0"
-              max="99"
+            >Weeks<input v-model.number="workSearchWeeks" type="number" min="1" max="52"
           /></label>
         </div>
         <button class="primary" @click="generateWorkSearchLog">
@@ -1476,9 +1437,7 @@ onBeforeUnmount(() => {
             ><label>Week of:<input :value="shortDate(week.start)" readonly /></label
             ><label>to<input :value="shortDate(addDays(week.start, 6))" readonly /></label
             ><label>Social Security #:<input v-model="printLog.ssn" /></label
-            ><label
-              >Number of Required Searches:<input v-model="printLog.required" type="number"
-            /></label>
+            ><span class="work-search-required">Required Searches<strong>2</strong></span>
           </div>
           <p class="work-search-note">
             If you are still unemployed after eight weeks of benefits, you should reduce your salary
@@ -1493,41 +1452,13 @@ onBeforeUnmount(() => {
                 <th>Results</th>
               </tr>
             </thead>
-            <tbody>
-              <tr v-for="row in week.rows" :key="row">
-                <td>
-                  <span>Date of Activity</span><input v-model="row.date" type="date" /><span
-                    >Work Search Activity</span
-                  ><textarea v-model="row.activity"></textarea><span>Type of Job</span><input />
-                </td>
-                <td>
-                  <span>Name</span><input v-model="row.employer" /><span>Address</span
-                  ><input v-model="row.address" /><span>City, State, Zip Code</span
-                  ><input v-model="row.cityStateZip" /><span>Area Code + Phone #</span
-                  ><input v-model="row.phone" />
-                </td>
-                <td>
-                  <span>Person Contacted</span><input v-model="row.person" /><span>By Mail</span
-                  ><input v-model="row.mail" /><span>Email</span><input v-model="row.email" /><span
-                    >Fax #</span
-                  ><input v-model="row.fax" /><input
-                    v-model="row.contactOther"
-                    placeholder="Other"
-                  />
-                </td>
-                <td>
-                  <label><input v-model="row.hired" type="checkbox" /> Hired</label
-                  ><label><input v-model="row.notHiring" type="checkbox" /> Not hiring</label
-                  ><span>Start date</span><input v-model="row.startDate" type="date" /><label
-                    ><input v-model="row.applicationFiled" type="checkbox" /> Application
-                    filed</label
-                  ><input v-model="row.resultOther" placeholder="Other" />
-                </td>
-              </tr>
-            </tbody>
+            <tbody v-html="workSearchRowsHtml(week.rows)"></tbody>
           </table>
           <footer>Keep this form for your records. Submit a copy to TWC only if requested.</footer>
-          <small>BN900E (10-12-23) · Week {{ weekIndex + 1 }} of {{ printLog.weeks.length }}</small>
+          <small
+            >BN900E (10-12-23) · Week {{ week.weekNumber }} · Page {{ week.pageNumber }} of
+            {{ week.pageCount }}</small
+          >
         </article>
       </section>
     </main>

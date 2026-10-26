@@ -1,4 +1,6 @@
 import { googleClientId } from '../utils/config.js'
+import { validateApplications } from '../domain/applications.js'
+import { addMissingApplications } from '../utils/sync.js'
 
 const clientId = () => googleClientId()
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
@@ -88,7 +90,8 @@ async function findBackup() {
       return await driveRequest(
         `files/${encodeURIComponent(configuredId)}?fields=id,name,modifiedTime`,
       )
-    } catch {
+    } catch (error) {
+      if (!error.message.includes('(404)')) throw error
       localStorage.removeItem(FILE_KEY)
     }
   }
@@ -111,9 +114,18 @@ function multipartBody(metadata, content) {
   return { body, contentType: `multipart/related; boundary=${boundary}` }
 }
 
-export async function saveToGoogleDrive(applications) {
-  const content = JSON.stringify({ version: 1, applications }, null, 2)
+export async function syncToGoogleDrive(applications) {
+  const local = validateApplications(JSON.parse(JSON.stringify(applications)))
   const existing = await findBackup()
+  let remote = []
+  if (existing) {
+    const backup = await driveRequest(`files/${encodeURIComponent(existing.id)}?alt=media`)
+    if (backup?.version !== 1)
+      throw new Error('The Google Drive file is not a valid pipedIn backup.')
+    remote = validateApplications(backup.applications)
+  }
+  const merged = addMissingApplications(remote, local)
+  const content = JSON.stringify({ version: 1, applications: merged }, null, 2)
   const metadata = existing
     ? { name: BACKUP_NAME }
     : { name: BACKUP_NAME, parents: ['appDataFolder'] }
@@ -121,7 +133,7 @@ export async function saveToGoogleDrive(applications) {
   const endpoint = existing
     ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(existing.id)}?uploadType=multipart`
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart'
-  const accessToken = JSON.parse(localStorage.getItem(TOKEN_KEY)).accessToken
+  const accessToken = await getToken()
   const response = await fetch(endpoint, {
     method: existing ? 'PATCH' : 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': multipart.contentType },
@@ -130,16 +142,7 @@ export async function saveToGoogleDrive(applications) {
   if (!response.ok) throw new Error(`Unable to save the Google Drive backup (${response.status}).`)
   const file = await response.json()
   localStorage.setItem(FILE_KEY, file.id)
-  return file
-}
-
-export async function restoreFromGoogleDrive() {
-  const file = await findBackup()
-  if (!file) throw new Error('No pipedIn backup was found in your Google Drive.')
-  const backup = await driveRequest(`files/${encodeURIComponent(file.id)}?alt=media`)
-  if (backup?.version !== 1 || !Array.isArray(backup.applications))
-    throw new Error('The Google Drive file is not a valid pipedIn backup.')
-  return backup
+  return { applications: remote, added: merged.length - remote.length }
 }
 
 export function googleDriveConfigured() {
