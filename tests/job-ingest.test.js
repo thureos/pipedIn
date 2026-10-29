@@ -276,3 +276,34 @@ test('ingestion parses raw JSON-LD objects, arrays and graphs', () => {
       /couldn’t find job details/,
     )
 })
+
+test('raw JSON-LD without a posting URL opens an extracted draft', async (t) => {
+  const server = createServer(
+    createJobIngestHandler({
+      fetcher: async () => {
+        assert.fail('Pasted JSON-LD must not trigger a fetch')
+      },
+    }),
+  )
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => server.close())
+  const base = `http://127.0.0.1:${server.address().port}`
+  const response = await fetch(`${base}/api/job-posting`, {
+    method: 'POST',
+    headers: { Origin: base, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      url: '',
+      html: JSON.stringify({
+        '@type': 'JobPosting',
+        title: 'Engineer',
+        hiringOrganization: { name: 'Example' },
+      }),
+    }),
+  })
+  assert.equal(response.status, 200)
+  const { application } = await response.json()
+  assert.equal(application.url, '')
+  assert.equal(application.title, 'Engineer')
+  assert.equal(application.company, 'Example')
+})

@@ -163,13 +163,14 @@ function employmentType(value) {
   return known[normalized] || (employmentTypes.includes(value) ? value : '')
 }
 
-export function extractJobPosting(jsonLd, sourceUrl) {
+export function extractJobPosting(jsonLd, sourceUrl = '') {
   const job = findJobPosting(jsonLd, sourceUrl)
   if (!job) throw new Error('No schema.org JobPosting was found at this URL.')
   const company = organizationName(job.hiringOrganization)
   const title = plainText(job.title, 200)
   if (!title) throw new Error('The JobPosting is missing required job title.')
-  if (!isApplicationUrl(sourceUrl)) throw new Error('Enter a valid http or https job posting URL.')
+  if (sourceUrl && !isApplicationUrl(sourceUrl))
+    throw new Error('Enter a valid http or https job posting URL.')
   const remote = asArray(job.jobLocationType).some(
     (type) => String(type).toUpperCase() === 'TELECOMMUTE',
   )
@@ -185,7 +186,7 @@ export function extractJobPosting(jsonLd, sourceUrl) {
     business: plainText(job.industry, 200),
     workplace,
     employmentType: employmentType(job.employmentType),
-    url: new URL(sourceUrl).href,
+    url: sourceUrl ? new URL(sourceUrl).href : '',
     notes: plainText(job.description, 5000),
     perks: asArray(job.jobBenefits)
       .slice(0, 20)

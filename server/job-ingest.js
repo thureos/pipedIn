@@ -411,7 +411,7 @@ export function createJobIngestHandler({
           typeof body.url !== 'string'
         )
           throw new ServiceError(400, 'Send one job URL.')
-        parseTargetUrl(body.url)
+        if (body.url || !isJsonLdSource(body.html || '')) parseTargetUrl(body.url)
         let html
         try {
           html = body.html === undefined ? await fetcher(body.url) : body.html

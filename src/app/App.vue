@@ -518,9 +518,9 @@ async function receiveApplication() {
       await importJobPosting(value)
     } else if (isJsonLdSource(value) || isHtmlPageSource(value)) {
       const url = jobPostingSourceUrl(value)
-      if (!url)
+      if (!url && !isJsonLdSource(value))
         throw new Error(
-          'Could not find the job page URL in this source. Paste source that includes a canonical URL, Open Graph URL, or JobPosting URL. JSON-LD must include a JobPosting url.',
+          'Could not find the job page URL in this source. Paste source that includes a canonical URL, Open Graph URL, or JobPosting URL.',
         )
       await importJobPosting(url, value)
     } else {
