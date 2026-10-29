@@ -4,6 +4,7 @@ import { encodeApplicationShare, decodeApplicationShare } from '../src/services/
 import {
   extractJobPosting,
   isHtmlPageSource,
+  isJsonLdSource,
   jobPostingSourceUrl,
 } from '../src/services/jobPosting.js'
 
@@ -113,4 +114,21 @@ test('JobPosting extraction maps organization, role, location and annual salary'
     () => extractJobPosting({}, 'https://jobs.example.test/role'),
     /No schema.org JobPosting/,
   )
+})
+
+test('raw JSON-LD resolves posting URLs without treating description HTML as page metadata', () => {
+  const job = {
+    '@context': 'https://schema.org',
+    '@type': 'JobPosting',
+    title: 'Engineer',
+    url: 'https://jobs.example.test/role',
+    description: '<link rel="canonical" href="https://wrong.example.test/">',
+  }
+  for (const value of [job, [job], { '@graph': [job] }]) {
+    const source = JSON.stringify(value)
+    assert.equal(isJsonLdSource(source), true)
+    assert.equal(jobPostingSourceUrl(source), job.url)
+  }
+  assert.equal(jobPostingSourceUrl('{invalid json'), '')
+  assert.equal(jobPostingSourceUrl(JSON.stringify({ ...job, url: 'javascript:alert(1)' })), '')
 })

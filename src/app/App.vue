@@ -74,7 +74,12 @@ import {
   salaryRangeLabel,
 } from '../domain/applications.js'
 import { encodeApplicationShare, decodeApplicationShare } from '../services/sharing.js'
-import { fetchJobPosting, isHtmlPageSource, jobPostingSourceUrl } from '../services/jobPosting.js'
+import {
+  fetchJobPosting,
+  isHtmlPageSource,
+  isJsonLdSource,
+  jobPostingSourceUrl,
+} from '../services/jobPosting.js'
 const store = useApplications()
 const buildId = import.meta.env.VITE_BUILD_ID
 const search = ref(''),
@@ -305,7 +310,7 @@ async function addApplicationManually() {
   const value = shareInput.value.trim()
   let url = ''
   if (isApplicationUrl(value)) url = value
-  else if (isHtmlPageSource(value)) url = jobPostingSourceUrl(value) || ''
+  else if (isJsonLdSource(value) || isHtmlPageSource(value)) url = jobPostingSourceUrl(value) || ''
   shareReceiveModal.value = false
   shareError.value = ''
   await openApplication({ ...blankApplication(), url, stage: 'applied' })
@@ -502,7 +507,8 @@ async function importJobPosting(url, html = '') {
 async function receiveApplication() {
   const value = shareInput.value.trim()
   if (!value) {
-    shareError.value = 'Paste a Base64 application share, job posting URL, or page source.'
+    shareError.value =
+      'Paste a Base64 application share, job posting URL, page source, or JSON-LD schema.'
     return
   }
   shareBusy.value = true
@@ -510,11 +516,11 @@ async function receiveApplication() {
   try {
     if (isApplicationUrl(value)) {
       await importJobPosting(value)
-    } else if (isHtmlPageSource(value)) {
+    } else if (isJsonLdSource(value) || isHtmlPageSource(value)) {
       const url = jobPostingSourceUrl(value)
       if (!url)
         throw new Error(
-          'Could not find the job page URL in this source. Paste source that includes a canonical URL, Open Graph URL, or JobPosting URL.',
+          'Could not find the job page URL in this source. Paste source that includes a canonical URL, Open Graph URL, or JobPosting URL. JSON-LD must include a JobPosting url.',
         )
       await importJobPosting(url, value)
     } else {
@@ -1894,12 +1900,12 @@ onBeforeUnmount(() => {
                 v-model="shareInput"
                 rows="5"
                 autofocus
-                placeholder="Paste Base64 application data, an https:// job posting URL, or website page source"
+                placeholder="Paste Base64 application data, an https:// job posting URL, or website page source or JSON-LD schema"
               ></textarea>
             </label>
             <p class="receive-note">
-              Base64 shares restore the full application. Job URLs and pasted website source are
-              read for schema.org JobPosting data.
+              Base64 shares restore the full application. Job URLs, pasted website source, and
+              JSON-LD schema are read for schema.org JobPosting data.
             </p>
             <div v-if="shareError" class="error-banner" role="alert">{{ shareError }}</div>
           </div>

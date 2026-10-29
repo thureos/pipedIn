@@ -4,7 +4,7 @@ import https from 'node:https'
 import { isIP } from 'node:net'
 import { createGunzip, createInflate, createBrotliDecompress } from 'node:zlib'
 import ipaddr from 'ipaddr.js'
-import { extractJobPosting } from '../src/services/jobPosting.js'
+import { extractJobPosting, isJsonLdSource } from '../src/services/jobPosting.js'
 import { embeddedJobData } from './structured-data.js'
 
 const MAX_URL_LENGTH = 2048
@@ -281,7 +281,10 @@ export function parseJobPostingHtml(html, sourceUrl) {
       'The pasted page source is larger than 10 MB. Paste only the job posting section or add the application manually.',
     )
   try {
-    return extractJobPosting(embeddedJobData(html), sourceUrl)
+    return extractJobPosting(
+      isJsonLdSource(html) ? JSON.parse(html) : embeddedJobData(html),
+      sourceUrl,
+    )
   } catch (error) {
     if (error.message.includes('required'))
       throw new ServiceError(

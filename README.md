@@ -47,7 +47,7 @@ npm run dev
 - Search and work arrangement filters, application list, and interview list.
 - Light and dark themes, responsive layout, keyboard-accessible dialogs, and storage error feedback.
 - JSON export and validated restore in Settings & data. Restore replaces the existing dataset after confirmation.
-- Share an application from its details: copy its posting URL or copy the complete application as Base64 JSON. Receive a Base64 application, paste a job URL, or paste website page source to open the ingested data in the application modal. Pasted source must include a canonical URL, Open Graph URL, or schema.org JobPosting URL. Review or complete the details and add notes before choosing Save application; closing the modal discards the draft. Base64 shares start in Potential applications. Job pages are fetched by the same-origin Node service, not directly by the browser.
+- Share an application from its details: copy its posting URL or copy the complete application as Base64 JSON. Receive a Base64 application, paste a job URL, or paste website page source or raw JSON-LD schema to open the ingested data in the application modal. Pasted source must include a canonical URL, Open Graph URL, or schema.org JobPosting URL. Review or complete the details and add notes before choosing Save application; closing the modal discards the draft. Base64 shares start in Potential applications. Job pages are fetched by the same-origin Node service, not directly by the browser.
 - Optional Google Drive backup and restore, using an app-private Drive file when configured with a Google OAuth client ID.
 - Optional fictional sample pipeline, available only when the workspace is empty. Delete all applications in Settings to clear it.
 
@@ -80,6 +80,8 @@ Salary minimum and maximum are entered in thousands (for example, `50` displays 
 ### Job URL service and security
 
 The browser posts a URL to the same-origin `/api/job-posting` endpoint. The service fetches the HTML, parses embedded JSON-LD or schema.org microdata, and returns only the extracted `JobPosting` fields; it does not persist URLs, HTML, or application data. The job URL and the service's outbound request are visible to the pipedIn server operator and the target website. Direct browser CORS restrictions no longer apply, though target sites can still deny or rate-limit server requests.
+
+Raw JSON-LD objects, arrays, and `@graph` documents can also be pasted directly into Receive / ingest; include a `url` on the JobPosting so the importer can identify the posting URL. The API accepts raw JSON-LD text in its existing `html` field alongside `url`.
 
 The HTML parser handles script attribute variations, multiple JSON-LD blocks, arrays and nested graphs, schema.org type URLs, and local `@id` references across blocks. Malformed blocks and postings without titles do not prevent another usable posting from importing. When multiple postings exist, a matching posting URL is preferred, then a posting with a company name and description. Microdata uses `itemscope`, `itemtype`, `itemprop`, and local `itemref` attributes. Common HTML entities are decoded in imported text. Compressed HTML (gzip, deflate, Brotli) is supported with limits on both compressed and decoded size.
 

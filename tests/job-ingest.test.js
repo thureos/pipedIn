@@ -250,3 +250,29 @@ test('production server serves the SPA and runtime config while blocking travers
   assert.equal((await fetch(`${base}/api/job-posting`, { method: 'POST' })).status, 202)
   assert.equal((await fetch(`${base}/%2e%2e%2fsecret.txt`)).status, 404)
 })
+
+test('ingestion parses raw JSON-LD objects, arrays and graphs', () => {
+  const job = {
+    '@context': 'https://schema.org',
+    '@type': 'JobPosting',
+    title: 'Engineer',
+    hiringOrganization: { '@id': '#company' },
+    description: '<p>Build things.</p>',
+  }
+  const company = { '@id': '#company', '@type': 'Organization', name: 'Example' }
+  for (const data of [[job, company], { '@graph': [job, company] }]) {
+    const result = parseJobPostingHtml(JSON.stringify(data), 'https://jobs.example.test/role')
+    assert.equal(result.title, 'Engineer')
+    assert.equal(result.company, 'Example')
+    assert.equal(result.notes, 'Build things.')
+  }
+  assert.equal(
+    parseJobPostingHtml(JSON.stringify(job), 'https://jobs.example.test/role').title,
+    'Engineer',
+  )
+  for (const invalid of ['{invalid', '{}', '{"@type":"Organization"}'])
+    assert.throws(
+      () => parseJobPostingHtml(invalid, 'https://jobs.example.test/role'),
+      /couldn’t find job details/,
+    )
+})

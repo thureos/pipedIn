@@ -229,8 +229,12 @@ export function isHtmlPageSource(value) {
   return /<(?:!doctype\s+html|html\b|head\b|body\b|meta\b|link\b|script\b|div\b)/i.test(value)
 }
 
+export function isJsonLdSource(value) {
+  return /^[\s]*[\[{]/.test(value)
+}
+
 export function jobPostingSourceUrl(html) {
-  const tags = html.match(/<(?:link|meta)\b[^>]*>/gi) || []
+  const tags = isJsonLdSource(html) ? [] : html.match(/<(?:link|meta)\b[^>]*>/gi) || []
   for (const tag of tags) {
     const rel = sourceAttribute(tag, 'rel').toLowerCase().split(/\s+/)
     const property = (
@@ -242,9 +246,11 @@ export function jobPostingSourceUrl(html) {
     if (candidate && isApplicationUrl(candidate)) return new URL(candidate).href
   }
 
-  const scripts = html.matchAll(
-    /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script\s*>/gi,
-  )
+  const scripts = isJsonLdSource(html)
+    ? [[null, html]]
+    : html.matchAll(
+        /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script\s*>/gi,
+      )
   for (const script of scripts) {
     try {
       const pending = [JSON.parse(script[1])]
