@@ -819,6 +819,10 @@ onBeforeUnmount(() => {
           <template v-if="view === 'pipeline'">
             <div class="stats-grid" aria-label="Pipeline totals">
               <div class="stat">
+                <span class="stat-label">Total applications</span
+                ><strong class="stat-value">{{ store.applications.length }}</strong>
+              </div>
+              <div class="stat">
                 <span class="stat-label">Active applications</span
                 ><strong class="stat-value">{{ active }}</strong>
               </div>
