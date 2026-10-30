@@ -6,11 +6,9 @@ import {
   Plus,
   Search,
   SlidersHorizontal,
-  LayoutDashboard,
   BriefcaseBusiness,
   CalendarDays,
   Settings2,
-  Leaf,
   Sun,
   Moon,
   ChevronDown,
@@ -252,18 +250,6 @@ const responseRate = computed(() =>
       )
     : 0,
 )
-const interviewEvents = computed(() =>
-  filtered.value
-    .flatMap((a) => a.interviews.map((i) => ({ ...i, application: a })))
-    .sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')),
-)
-const dateLabel = (value) =>
-  value
-    ? new Date(value + 'T12:00:00').toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-      })
-    : 'Not scheduled'
 function toast(message) {
   notice.value = message
   clearTimeout(noticeTimer)
@@ -297,10 +283,6 @@ async function openApplication(item, stage = 'applied') {
   modal.value = true
   await nextTick()
   companyInput.value?.focus()
-}
-function openInterview(application) {
-  openApplication(application)
-  tab.value = 'interviews'
 }
 function closeModal() {
   modal.value = false
@@ -342,7 +324,7 @@ function save() {
     salaryRangeLabel(draft.value) === 'Salary not specified' ? '' : salaryRangeLabel(draft.value)
   if (store.save(JSON.parse(JSON.stringify(draft.value)))) {
     closeModal()
-    toast('Application saved. Your next chapter is taking shape.')
+    toast('Application saved.')
   }
 }
 function updateCard(application, changes) {
@@ -356,16 +338,6 @@ function remove() {
     closeModal()
     toast('Application deleted.')
   }
-}
-function addRound() {
-  draft.value.interviews.push({
-    id: crypto.randomUUID(),
-    name: '',
-    person: '',
-    date: '',
-    rating: 0,
-    notes: '',
-  })
 }
 function clearApplications() {
   if (
@@ -792,58 +764,38 @@ onBeforeUnmount(() => {
         <X :size="15" />
       </button>
     </div>
-    <aside class="sidebar">
-      <a class="brand" aria-label="pipedIn home" href="#" @click.prevent="view = 'pipeline'"
-        ><picture
-          ><source media="(max-width: 850px)" srcset="/square-logo.webp" />
-          <img
-            class="brand-mark"
-            src="/full-logo.webp"
-            width="144"
-            height="48"
-            alt="pipedIn" /></picture
-      ></a>
-      <div class="workspace">
-        <span class="avatar">Y</span>
-        <div><strong>Your workspace</strong><small>Personal job search</small></div>
-        <ChevronDown :size="15" />
-      </div>
-      <div class="nav-label">WORKSPACE</div>
-      <nav aria-label="Main navigation">
-        <button :class="{ selected: view === 'pipeline' }" @click="view = 'pipeline'">
-          <LayoutDashboard :size="18" /> My pipeline
-          <span class="nav-count">{{ store.applications.length }}</span>
-        </button>
-        <button :class="{ selected: view === 'applications' }" @click="view = 'applications'">
-          <BriefcaseBusiness :size="18" /> All applications
-        </button>
-        <button :class="{ selected: view === 'interviews' }" @click="view = 'interviews'">
-          <CalendarDays :size="18" /> Interviews
-          <span v-if="interviewEvents.length" class="tiny-dot"></span>
-        </button>
-        <button :class="{ selected: view === 'reports' }" @click="view = 'reports'">
-          <FileText :size="18" /> Export Logs
-        </button>
-      </nav>
-      <div class="sidebar-bottom">
-        <div class="encouragement">
-          <span class="plant">✳</span><strong>A little progress, every day.</strong>
-          <p>Your next chapter starts with<br />one application.</p>
-          <div class="mini-line"></div>
-        </div>
-        <button class="sidebar-setting" @click="view = 'settings'">
-          <Settings2 :size="18" /> Settings & data
-        </button>
-        <div class="sidebar-footer">
-          <span><i class="online-dot"></i> Stored on this device</span
-          ><button
+    <main>
+      <header class="app-header">
+        <a class="app-brand" aria-label="pipedIn home" href="#" @click.prevent="view = 'pipeline'">
+          <img src="/full-logo.webp" width="120" height="40" alt="pipedIn" />
+        </a>
+        <div class="app-actions" aria-label="Workspace controls">
+          <button v-if="view !== 'pipeline'" class="secondary" @click="view = 'pipeline'">
+            <ArrowLeft :size="16" /> Pipeline
+          </button>
+          <button
+            class="secondary"
+            :aria-pressed="view === 'reports'"
+            @click="view = view === 'reports' ? 'pipeline' : 'reports'"
+          >
+            <FileText :size="16" /> Exports
+          </button>
+          <button
+            class="secondary"
+            :aria-pressed="view === 'settings'"
+            @click="view = view === 'settings' ? 'pipeline' : 'settings'"
+          >
+            <Settings2 :size="16" /> Settings
+          </button>
+          <button
             class="icon-button"
             :aria-label="privacyBlur ? 'Show company names' : 'Blur company names'"
             :aria-pressed="privacyBlur"
             @click="togglePrivacyBlur"
           >
-            <EyeOff v-if="privacyBlur" :size="17" /><Eye v-else :size="17" /></button
-          ><button
+            <EyeOff v-if="privacyBlur" :size="17" /><Eye v-else :size="17" />
+          </button>
+          <button
             class="icon-button"
             @click="toggleTheme"
             :aria-label="theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'"
@@ -851,105 +803,40 @@ onBeforeUnmount(() => {
             <Moon v-if="theme === 'light'" :size="17" /><Sun v-else :size="17" />
           </button>
         </div>
-      </div>
-    </aside>
-
-    <main>
+      </header>
       <div class="main-container">
         <section class="page-content">
           <div class="page-heading">
-            <div>
-              <div class="eyebrow">A LITTLE MOMENTUM GOES A LONG WAY</div>
-              <h1>
-                {{
-                  view === 'pipeline'
-                    ? 'Your next chapter, in motion.'
-                    : view === 'applications'
-                      ? 'Every opportunity, in one place.'
-                      : view === 'interviews'
-                        ? 'Make a great connection.'
-                        : view === 'reports'
-                          ? 'Keep your search records ready.'
-                          : 'Your workspace. Your data.'
-                }}
-              </h1>
-              <p>
-                {{
-                  view === 'settings'
-                    ? 'A private space, with you in control.'
-                    : view === 'reports'
-                      ? 'Generate a weekly work search activity log from your applications.'
-                      : 'Keep your opportunities organized. Make room for what’s next.'
-                }}
-              </p>
-            </div>
-            <button
-              v-if="view !== 'settings' && view !== 'reports'"
-              class="primary"
-              @click="openApplication()"
-            >
+            <h1>
+              {{ view === 'pipeline' ? 'Pipeline' : view === 'reports' ? 'Exports' : 'Settings' }}
+            </h1>
+            <button v-if="view === 'pipeline'" class="primary" @click="openApplication()">
               <Plus :size="17" /> Add application
             </button>
           </div>
 
           <div v-if="store.error" class="error-banner" role="alert">{{ store.error }}</div>
-          <template v-if="view !== 'settings' && view !== 'reports'">
-            <div class="stats-grid">
+          <template v-if="view === 'pipeline'">
+            <div class="stats-grid" aria-label="Pipeline totals">
               <div class="stat">
-                <span class="stat-icon mint"><BriefcaseBusiness :size="19" /></span>
-                <div>
-                  <span class="stat-label">Active applications</span>
-                  <div class="stat-value">
-                    {{ active }} <span class="stat-note">opportunities ahead</span>
-                  </div>
-                </div>
-                <svg class="sparkline" viewBox="0 0 70 30">
-                  <path d="M1 25L13 21L25 23L37 13L49 16L61 5L69 7" />
-                </svg>
+                <span class="stat-label">Active applications</span
+                ><strong class="stat-value">{{ active }}</strong>
               </div>
               <div class="stat">
-                <span class="stat-icon sand"><CalendarDays :size="19" /></span>
-                <div>
-                  <span class="stat-label">In interviews</span>
-                  <div class="stat-value">
-                    {{ interviewCount }} <span class="stat-note">conversations started</span>
-                  </div>
-                </div>
+                <span class="stat-label">In interviews</span
+                ><strong class="stat-value">{{ interviewCount }}</strong>
               </div>
               <div class="stat">
-                <span class="stat-icon sage"><Star :size="19" /></span>
-                <div>
-                  <span class="stat-label">Offers received</span>
-                  <div class="stat-value">
-                    {{ offerCount }} <span class="stat-note">reasons to celebrate</span>
-                  </div>
-                </div>
+                <span class="stat-label">Offers received</span
+                ><strong class="stat-value">{{ offerCount }}</strong>
               </div>
               <div class="stat">
-                <span class="stat-icon blue"><ArrowUpRight :size="21" /></span>
-                <div>
-                  <span class="stat-label">Response rate</span>
-                  <div class="stat-value">
-                    {{ responseRate }}<small>%</small
-                    ><span class="stat-note">of all applications</span>
-                  </div>
-                </div>
+                <span class="stat-label">Response rate</span
+                ><strong class="stat-value">{{ responseRate }}<small>%</small></strong>
               </div>
             </div>
 
             <div class="board-toolbar">
-              <div class="board-tabs">
-                <button class="active">
-                  <LayoutDashboard :size="16" />
-                  {{
-                    view === 'pipeline'
-                      ? 'Pipeline view'
-                      : view === 'applications'
-                        ? 'All applications'
-                        : 'Interview rounds'
-                  }}</button
-                ><span class="total-label">{{ filtered.length }} applications</span>
-              </div>
               <div class="toolbar-actions">
                 <div
                   v-if="view === 'pipeline'"
@@ -992,8 +879,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div class="data-actions" aria-label="Import and export applications">
-              <span>All applications · {{ store.applications.length }}</span
-              ><button class="secondary" @click="openShareReceiver">
+              <button class="secondary" @click="openShareReceiver">
                 <ClipboardPaste :size="14" /> Receive / ingest
               </button>
               <details ref="importMenu" class="data-menu">
@@ -1035,10 +921,9 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-if="!store.applications.length && !store.error" class="welcome">
-              <div class="welcome-icon"><Leaf :size="25" /></div>
               <div>
-                <strong>A fresh start looks good on you.</strong>
-                <p>Add your first opportunity, or explore a sample pipeline to see how it works.</p>
+                <strong>No applications yet.</strong>
+                <p>Add an application or try the sample pipeline.</p>
               </div>
               <button class="secondary" @click="exploreSamplePipeline">
                 Explore sample pipeline <ArrowRight :size="15" />
@@ -1194,22 +1079,6 @@ onBeforeUnmount(() => {
                           >
                         </div></template
                       >
-                      <div
-                        v-if="application.stage === 'interviews' && application.interviews.length"
-                        class="interview-preview"
-                      >
-                        <CalendarDays :size="13" /><span>{{
-                          application.interviews.at(-1).name || 'Interview'
-                        }}</span
-                        ><span class="round-count"
-                          >{{ application.interviews.length }} round{{
-                            application.interviews.length > 1 ? 's' : ''
-                          }}</span
-                        >
-                      </div>
-                      <div v-if="application.stage === 'offer'" class="offer-message">
-                        <span>✧</span> A new door is opening
-                      </div>
                     </button>
                     <div class="card-age">
                       <span
@@ -1254,72 +1123,9 @@ onBeforeUnmount(() => {
                 </div>
               </section>
             </div>
-            <div v-else-if="view === 'applications'" class="list-view">
-              <div v-if="!filtered.length" class="empty-state">
-                No applications to show. Add an opportunity or adjust your filters.
-              </div>
-              <button
-                v-for="a in filtered"
-                :key="a.id"
-                class="list-row"
-                :data-color="a.color"
-                @click="openApplication(a)"
-              >
-                <span class="company-logo">{{ a.company[0] }}</span
-                ><span
-                  ><strong
-                    ><Star
-                      v-if="a.starred"
-                      class="list-star"
-                      :size="14"
-                      aria-label="Starred application"
-                    />{{ a.company }}</strong
-                  ><small
-                    >{{ a.title || 'Saved opportunity'
-                    }}<template v-if="a.employmentType"> · {{ a.employmentType }}</template></small
-                  ></span
-                ><span class="list-location">{{ a.workplace }} · {{ a.location }}</span
-                ><span class="age-badge" :title="timestampLabel(a.stageEnteredAt)"
-                  >{{ age(a.stageEnteredAt)
-                  }}<template v-if="a.stageEnteredAt"> in stage</template></span
-                ><span class="status-pill">{{
-                  columnForStage(a.stage) === 'ended'
-                    ? 'Completed · ' + endingOutcomes.find((o) => o.id === a.stage)?.name
-                    : stages.find((s) => s.id === a.stage).name
-                }}</span
-                ><ArrowUpRight :size="17" />
-              </button>
-            </div>
-            <div v-else class="list-view">
-              <div v-if="!interviewEvents.length" class="empty-state">
-                <CalendarDays :size="30" />
-                <h3>Your next conversation starts here.</h3>
-                <p>Open an application and add a round in the Interviews tab.</p>
-              </div>
-              <button
-                v-for="i in interviewEvents"
-                :key="i.application.id + i.id"
-                class="list-row"
-                @click="openInterview(i.application)"
-              >
-                <span class="stat-icon sand"><CalendarDays :size="20" /></span
-                ><span
-                  ><strong>{{ i.name || 'Interview' }} · {{ i.application.company }}</strong
-                  ><small>{{ i.person || 'Interviewer not specified' }}</small></span
-                ><span class="list-location">{{ dateLabel(i.date) }}</span
-                ><span class="rating-label">{{
-                  i.rating ? '★'.repeat(i.rating) : 'Not rated'
-                }}</span
-                ><ArrowUpRight :size="17" />
-              </button>
-            </div>
             <footer class="board-footer">
-              <span
-                ><ShieldCheck :size="14" /> Your journey stays yours. All data is saved in this
-                browser.</span
-              ><span v-if="view === 'pipeline'"
-                ><GripVertical :size="14" /> Drag cards to reorder or move between stages</span
-              ><span class="policy-links"
+              <span><GripVertical :size="14" /> Drag cards to reorder or move stages</span>
+              <span class="policy-links"
                 ><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a></span
               >
             </footer>
@@ -1473,7 +1279,6 @@ onBeforeUnmount(() => {
       <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
         <div class="dialog-header">
           <div>
-            <span class="eyebrow">YOUR NEXT OPPORTUNITY</span>
             <h2 id="dialog-title">
               {{
                 store.applications.some((a) => a.id === draft.id)
@@ -1507,14 +1312,6 @@ onBeforeUnmount(() => {
           <div class="dialog-tabs">
             <button type="button" :class="{ active: tab === 'details' }" @click="tab = 'details'">
               Overview
-            </button>
-            <button
-              v-if="draft.stage !== 'potential'"
-              type="button"
-              :class="{ active: tab === 'interviews' }"
-              @click="tab = 'interviews'"
-            >
-              Interviews <span>{{ draft.interviews.length }}</span>
             </button>
             <CardPreferences
               :color="draft.color"
@@ -1770,79 +1567,6 @@ onBeforeUnmount(() => {
                 </li>
               </ol>
             </section>
-            <div v-show="tab === 'interviews'">
-              <div class="interviews-heading">
-                <div>
-                  <h3>Every conversation counts.</h3>
-                  <p>Keep track of the people, the rounds, and how it felt.</p>
-                </div>
-                <button type="button" class="secondary" @click="addRound()">
-                  <Plus :size="15" /> Add round
-                </button>
-              </div>
-              <div v-if="!draft.interviews.length" class="empty-state">
-                <CalendarDays :size="32" />
-                <p>No interviews yet. Add your first round above.</p>
-              </div>
-              <div
-                v-for="(interview, index) in draft.interviews"
-                :key="interview.id"
-                class="interview-form"
-              >
-                <div class="field-heading">
-                  Round {{ index + 1
-                  }}<button
-                    type="button"
-                    class="icon-button"
-                    aria-label="Remove interview round"
-                    @click="draft.interviews.splice(index, 1)"
-                  >
-                    <Trash2 :size="15" />
-                  </button>
-                </div>
-                <div class="form-grid">
-                  <label
-                    >Interview stage<input
-                      v-model="interview.name"
-                      placeholder="e.g. Technical interview" /></label
-                  ><label>Interview date<input v-model="interview.date" type="date" /></label
-                  ><label class="full"
-                    >Person interviewed with<input
-                      v-model="interview.person"
-                      placeholder="Name and role"
-                  /></label>
-                  <div class="full">
-                    <div class="field-heading">How did it go?</div>
-                    <div class="stars">
-                      <button
-                        v-for="rating in 5"
-                        :key="rating"
-                        type="button"
-                        :aria-label="`Rate ${rating} out of 5 stars`"
-                        :aria-pressed="interview.rating === rating"
-                        @click="interview.rating = rating"
-                      >
-                        <Star :size="25" :class="{ filled: rating <= interview.rating }" /></button
-                      ><button
-                        v-if="interview.rating"
-                        type="button"
-                        class="text-button"
-                        @click="interview.rating = 0"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                  <label class="full"
-                    >Interview notes<textarea
-                      v-model="interview.notes"
-                      rows="3"
-                      placeholder="Highlights, questions, and next steps…"
-                    ></textarea>
-                  </label>
-                </div>
-              </div>
-            </div>
           </div>
           <div v-if="store.error" class="error-banner" role="alert">{{ store.error }}</div>
           <div class="dialog-footer">
@@ -1882,7 +1606,6 @@ onBeforeUnmount(() => {
       >
         <div class="dialog-header">
           <div>
-            <span class="eyebrow">EASY SHARE</span>
             <h2 id="receive-title">Receive an application</h2>
           </div>
           <button

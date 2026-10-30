@@ -30,12 +30,12 @@
   padding: 9px 0;
   background: transparent;
   color: var(--text);
-  font-size: 11px;
+  font-size: 0.8125rem;
 }
 .salary-error {
   grid-column: 1 / -1;
   color: #b9485d;
-  font-size: 10px;
+  font-size: 0.75rem;
 }
 .dialog-header-actions {
   display: flex;
@@ -77,14 +77,14 @@
   padding: 9px 10px;
   border-radius: 4px;
   text-align: left;
-  font-size: 10px;
+  font-size: 0.75rem;
 }
 .share-menu-panel button:hover {
   background: var(--hover);
 }
 .receive-note {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 0.75rem;
 }
 .application-meta {
   margin: 0 12px 10px;
@@ -99,7 +99,7 @@
 .receive-body label {
   display: grid;
   gap: 7px;
-  font-size: 11px;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 .receive-body textarea {
@@ -110,5 +110,5 @@
   padding: 10px;
   background: var(--input);
   color: var(--text);
-  font-size: 11px;
+  font-size: 0.8125rem;
 }
