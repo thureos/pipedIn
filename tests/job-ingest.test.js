@@ -15,7 +15,7 @@ import {
   createJobIngestHandler,
 } from '../server/job-ingest.js'
 import { createAppServer } from '../server/index.js'
-import { extractJobPosting } from '../src/services/jobPosting.js'
+import { extractJobPosting, jobPostingSourceUrl } from '../src/services/jobPosting.js'
 
 test('public address check rejects private, reserved, mapped and link-local IPs', () => {
   for (const address of [
@@ -55,6 +55,10 @@ test('target URL validation rejects non-web, credentialed, nonstandard-port and 
   ])
     assert.throws(() => parseTargetUrl(url))
   assert.equal(parseTargetUrl('https://jobs.example.com/role').hostname, 'jobs.example.com')
+  assert.equal(
+    parseTargetUrl('https://jobs.prestigestaffing.com/#/jobs/53420').hash,
+    '#/jobs/53420',
+  )
 })
 
 test('DNS answers with any private address are rejected', async () => {
@@ -306,4 +310,47 @@ test('raw JSON-LD without a posting URL opens an extracted draft', async (t) => 
   assert.equal(application.url, '')
   assert.equal(application.title, 'Engineer')
   assert.equal(application.company, 'Example')
+})
+
+test('pasted JobPosting with a hash route imports without fetching and preserves its URL', async (t) => {
+  const source = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'JobPosting',
+    title: 'Senior Backend Engineer - PHP/Laravel',
+    identifier: {
+      '@type': 'PropertyValue',
+      name: 'Prestige Staffing',
+      value: '53420',
+    },
+    hiringOrganization: {
+      '@type': 'Organization',
+      name: 'Prestige Staffing',
+      sameAs: 'https://www.prestigestaffing.com/',
+    },
+    url: 'https://jobs.prestigestaffing.com/#/jobs/53420',
+    directApply: false,
+  })
+  const server = createServer(
+    createJobIngestHandler({
+      fetcher: async () => {
+        assert.fail('Pasted JSON-LD must not trigger a fetch')
+      },
+    }),
+  )
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => server.close())
+  const base = `http://127.0.0.1:${server.address().port}`
+  const url = jobPostingSourceUrl(source)
+  assert.equal(url, 'https://jobs.prestigestaffing.com/#/jobs/53420')
+  const response = await fetch(`${base}/api/job-posting`, {
+    method: 'POST',
+    headers: { Origin: base, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, html: source }),
+  })
+  assert.equal(response.status, 200)
+  const { application } = await response.json()
+  assert.equal(application.title, 'Senior Backend Engineer - PHP/Laravel')
+  assert.equal(application.company, 'Prestige Staffing')
+  assert.equal(application.url, url)
 })

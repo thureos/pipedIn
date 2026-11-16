@@ -59,12 +59,7 @@ export function parseTargetUrl(input) {
   } catch {
     throw new ServiceError(400, 'Enter a valid job posting URL.')
   }
-  if (
-    !['http:', 'https:'].includes(target.protocol) ||
-    target.username ||
-    target.password ||
-    target.hash
-  )
+  if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password)
     throw new ServiceError(400, 'Only public http and https job URLs are supported.')
   if (target.port && target.port !== (target.protocol === 'https:' ? '443' : '80'))
     throw new ServiceError(400, 'Only standard web ports are supported.')
